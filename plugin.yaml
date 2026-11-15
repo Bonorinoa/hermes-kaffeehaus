@@ -1,5 +1,5 @@
 name: hermes-kaffeehaus
-version: "0.1.0"
+version: "0.1.1"
 description: "A time-aware pixel café behind your Hermes Desktop chat, with two seats: Focus and Window Seat. Runs locally; experimental. Unofficial; not affiliated with Nous Research."
 author: Augusto Gonzalez-Bonorino
 manifest_version: 1
