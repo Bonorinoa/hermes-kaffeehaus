@@ -2,7 +2,9 @@
 
 A pixel café that lives behind your [Hermes Desktop](https://github.com/NousResearch/hermes-agent) chat and follows your local time. Morning light comes in through the window, dusk turns it orange, and at night the lamp comes on and the stars come out. Someone at the next table writes while Hermes works.
 
-<!-- CLIP -->
+![Kaffeehaus in Hermes Desktop: the light changes through the day, the note-taker writes while Hermes answers, then Focus and Classic](media/kaffeehaus.gif)
+
+<sub>Recorded in Hermes Desktop on macOS. A 41-second version with an original soundtrack (composed in Strudel) is on the [v0.2.0 release page](https://github.com/Bonorinoa/hermes-kaffeehaus/releases/tag/v0.2.0).</sub>
 
 It runs entirely on your Mac, never reads your chats, and switches itself off rather than get in your way. A personal side project; unofficial, not affiliated with Nous Research.
 
