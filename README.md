@@ -6,6 +6,7 @@ Choose between two seats:
 
 - **Window Seat:** the room sits beside your chat, sharp and in full view.
 - **Focus:** the chat is centred and the room is blurred behind it, so you get the atmosphere without the detail.
+- **Classic:** no room. The Kaffeehaus palette and type (espresso, oxblood, cream, serif prose) over Hermes's normal layout. The pill stays, so you can step back into the café.
 
 | Window Seat | Focus |
 |---|---|
