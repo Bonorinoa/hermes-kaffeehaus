@@ -1,6 +1,18 @@
 # Kaffeehaus for Hermes Desktop
 
-A pixel café that lives behind your [Hermes Desktop](https://github.com/NousResearch/hermes-agent) chat and follows your local time. Morning light comes in through the window, dusk turns it orange, and at night the lamp comes on and the stars come out.
+A pixel café that lives behind your [Hermes Desktop](https://github.com/NousResearch/hermes-agent) chat and follows your local time. Morning light comes in through the window, dusk turns it orange, and at night the lamp comes on and the stars come out. Someone at the next table writes while Hermes works.
+
+<!-- CLIP -->
+
+It runs entirely on your Mac, never reads your chats, and switches itself off rather than get in your way. A personal side project; unofficial, not affiliated with Nous Research.
+
+**Quick start** (macOS, Hermes Desktop 0.23.1+, a dark theme):
+
+```sh
+hermes plugins install Bonorinoa/hermes-kaffeehaus
+```
+
+Then turn **Kaffeehaus** on in **Capabilities → Plugins**, open a chat, press **⌘K** and run **Kaffeehaus café**.
 
 Choose a seat:
 
@@ -67,7 +79,20 @@ Switching seats eases the chat into place and fades the room across. With macOS 
 - It never reads your chats. The note-taker reacts only to whether Hermes is working, not to what anyone wrote.
 - Motion is on by default. It respects your system's Reduce motion setting, and you can turn motion off on the card.
 - It works only with dark themes, including Glass. On light or unrecognised themes it refuses to start rather than make your text hard to read.
+- It changes one chat at a time, in the main window. Split panes, pop-out and HUD windows stay as they are.
 - Settings are kept while the app runs (Off and back on returns to the same café) and reset when it reloads; nothing is saved to disk.
+
+## If something looks wrong
+
+| What you see | Why, and what to do |
+|---|---|
+| The café switched itself off | You opened a different chat in that window, changed to a light theme, or Hermes changed its layout. Open the chat you want and run ⌘K → **Kaffeehaus café** again. |
+| "Not applied" | It needs exactly one chat on screen and a dark theme. Close split panes and try again. |
+| The tab is gone | You closed it, which is fine. ⌘K → **Kaffeehaus: show the tab** brings it back. |
+| Nothing moves | macOS **Reduce motion** is on (System Settings → Accessibility → Display), or Motion is off on the card. |
+| The menu covers my text | That's on purpose while it's open, so the window stays visible. Esc closes it. |
+
+Found a bug or have an idea? [Open an issue](https://github.com/Bonorinoa/hermes-kaffeehaus/issues).
 
 ## ⚠️ Experimental
 
