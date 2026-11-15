@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Kaffeehaus fixture (NOT Hermes)</title>
+<script type="importmap">{"imports":{"@hermes/plugin-sdk":"./fake-sdk.js","react":"./fake-react.js"}}</script>
+<style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:#14161c;color:#e8e6e3;font:15px/1.6 -apple-system,Helvetica,sans-serif;--ui-text-primary:#ecebe8;--ui-text-secondary:#c8c6c2;--ui-text-tertiary:#8f8d8a;--ui-stroke-secondary:#3a3d46;--ui-stroke-tertiary:#2a2d35;--ui-bg-chrome:#14161c;--ui-accent:#7aa2f7;--muted-foreground:#8f8d8a}
+[data-chat-surface]{--composer-width:780px;position:relative;display:flex;flex-direction:column;width:100vw;height:100vh;overflow:hidden;background:#14161c;color:var(--ui-text-primary)}
+[data-slot=composer-bounds]{position:relative;flex:1;min-height:0;overflow:hidden;background:#14161c}
+[data-slot=thread]{position:relative;height:100%;overflow:hidden}
+[data-slot=aui_thread-viewport]{height:100%;overflow:auto}
+[data-slot=aui_thread-content]{max-width:var(--composer-width);margin:0 auto;padding:24px 24px 160px}
+[data-slot=composer-dock]{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);width:var(--composer-width);max-width:calc(100% - 32px)}
+.composer{border:1px solid var(--ui-stroke-secondary);border-radius:14px;padding:14px 16px;color:var(--ui-text-tertiary);background:rgba(20,22,28,.6)}
+.user{background:var(--ui-chat-bubble-background,#23262e);padding:10px 14px;border-radius:10px;margin-bottom:18px}
+.tool{color:var(--ui-text-tertiary);font-size:13px}
+table{border-collapse:collapse;width:100%;margin-top:8px}th{color:var(--muted-foreground);text-align:left;font-weight:500}th,td{border-bottom:1px solid var(--ui-stroke-tertiary);padding:6px 10px}
+a{color:var(--ui-accent)}
+</style></head><body>
+<div data-chat-surface>
+ <div data-slot="composer-bounds">
+  <div data-slot="thread"><div data-slot="aui_thread-viewport"><div data-slot="aui_thread-content">
+   <div class="user">In three short paragraphs, describe the history of Viennese coffeehouses. Then add a small table of four classic drinks.</div>
+   <p class="tool">Read www.example.org/coffee</p>
+   <p>Vienna's coffeehouse culture is usually dated to the 1680s, after the siege of 1683, when the first licensed houses opened near the Stephansdom. They became places to read the papers, play chess and stay for hours over a single cup.</p>
+   <p>By the nineteenth century there were well over a hundred, and writers, composers and politicians kept regular tables. A glass of water arrived with every coffee, and refills came unasked. <a href="#">Café Landtmann</a> opened in 1873.</p>
+   <p>The houses declined after the wars but survived, and in 2011 the culture was listed as intangible heritage. The marble tables, newspapers on wooden holders and unhurried waiters are still there.</p>
+   <table><tr><th>Drink</th><th>What it is</th></tr><tr><td>Melange</td><td>Espresso with steamed milk and foam</td></tr><tr><td>Einspänner</td><td>Black coffee in a glass, topped with whipped cream</td></tr><tr><td>Kleiner Brauner</td><td>A single espresso with a little milk</td></tr><tr><td>Fiaker</td><td>Double espresso with rum and cream</td></tr></table>
+  </div></div></div>
+  <div data-slot="composer-dock"><div class="composer">+ Ask anything</div></div>
+ </div>
+</div>
+<script type="module" src="./run.js"></script>
+</body></html>
