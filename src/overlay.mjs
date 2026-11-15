@@ -12,13 +12,13 @@ const THEMES = {
     btn: 'flex:1;padding:6px 8px;border:1px solid #b59a73;background:transparent;border-radius:3px;color:#2a211b;font:inherit;cursor:pointer',
     on: 'background:#2a211b;color:#f2e9d6;border-color:#2a211b', muted: '#7a6650', accent: '#6b4a2f',
     sections: [['Platz', 'where you sit'], ['Uhrzeit', 'light in the room'], ['Hausmischungen', 'house blends'], ['À la carte', 'for this seat']],
-    seats: [['window', 'Fensterplatz'], ['focus', 'Fokus']], follow: 'Jetzt', reset: 'Zurücksetzen · reset this seat', german: true },
+    seats: [['window', 'Fensterplatz'], ['focus', 'Fokus'], ['classic', 'Klassisch']], follow: 'Jetzt', reset: 'Zurücksetzen · reset this seat', german: true },
   glass: { panel: 'background:rgba(22,26,36,.82);color:#eef0f4;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px 12px;box-shadow:0 20px 44px rgba(0,0,0,.45);font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;width:340px;backdrop-filter:blur(26px) saturate(1.5)',
     title: 'Café', sub: 'scene settings', head: 'font:600 10.5px/1 -apple-system,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,240,244,.68);margin:12px 0 7px',
     btn: 'flex:1;padding:6px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);border-radius:8px;color:#eef0f4;font:inherit;cursor:pointer',
     on: 'background:rgba(201,163,106,.28);border-color:rgba(201,163,106,.7)', muted: 'rgba(238,240,244,.6)', accent: '#c9a36a',
     sections: [['Seat', ''], ['Light', ''], ['House blends', ''], ['Look · this seat', '']],
-    seats: [['window', 'Window Seat'], ['focus', 'Focus']], follow: 'Follow clock', reset: 'Reset this seat', german: false } };
+    seats: [['window', 'Window Seat'], ['focus', 'Focus'], ['classic', 'Classic']], follow: 'Follow clock', reset: 'Reset this seat', german: false } };
 
 const blendOf = looks => {
   const same = (a, b) => Object.keys(LOOK_RANGES).every(k => a[k] === b[k]);
@@ -59,6 +59,8 @@ export function createOverlay({ root, listen, update }) {
 
     head(0); const seatRow = row();
     const seats = T.seats.map(([mode, text]) => { const b = button(seatRow, text, () => update({ mode })); b.dataset.mode = mode; return b; });
+    const classicNote = el('p', `margin:10px 0 2px;font-style:italic;color:${T.muted}`, 'Classic is the Kaffeehaus palette and type without the room. Pick a seat above to step into the café.');
+    panel.append(classicNote); const roomFrom = panel.childElementCount;
     head(1); const hourRow = row(); const hour = range([0, 23.75], 0.25, 'Hour'); hour.style.flex = '1';
     const hourOut = el('span', `font-variant-numeric:tabular-nums;color:${T.muted}`);
     listen(hour, 'input', () => update({ overrideHour: Number(hour.value) }));
@@ -81,7 +83,8 @@ export function createOverlay({ root, listen, update }) {
     const foot = el('div', `display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid ${T.german ? '#d7c6a6' : 'rgba(255,255,255,.1)'};font-size:12px;color:${T.muted}`);
     const blendName = el('span'); const reset = el('button', `background:none;border:0;color:${T.accent};text-decoration:underline;cursor:pointer;font:inherit`, T.reset); reset.type = 'button';
     foot.append(blendName, reset); panel.append(foot);
-    panels[name] = { panel, close, reset, seats, hour, hourOut, follow, blends, looks, blendName, T };
+    const roomOnly = [...panel.children].slice(roomFrom);
+    panels[name] = { panel, close, reset, seats, hour, hourOut, follow, blends, looks, blendName, T, classicNote, roomOnly };
   }
   root.append(board, pill, panels.paper.panel, panels.glass.panel);
 
@@ -114,8 +117,9 @@ export function createOverlay({ root, listen, update }) {
       let left = cord - 180 - 22; if (left < 16) left = Math.min(cord + 22, g.chatLeft - 220);
       const top = Math.max(12, band - bh - 8);
       board.style.left = `${dx + left}px`; board.style.top = `${dy + top}px`;
-      const p = panels.paper.panel, ph = Math.min(p.scrollHeight || 560, h - 64);
-      p.style.left = `${dx + Math.max(16, Math.min(left, g.chatLeft - 350))}px`; p.style.top = `${dy + Math.max(48, Math.min(top, h - ph - 16))}px`; p.style.maxHeight = `${h - 64}px`;
+      // Open the card over the chat column, never over the room: you change the hour to watch the window.
+      const p = panels.paper.panel;
+      p.style.left = `${dx + Math.max(g.chatLeft + 16, Math.min(g.chatLeft + 24, r.width - 346))}px`; p.style.top = `${dy + 48}px`; p.style.maxHeight = `${h - 64}px`;
     } else {
       pill.style.left = `${dx + 16}px`; pill.style.top = `${dy + 14}px`;
       const p = panels.glass.panel; p.style.left = `${dx + 16}px`; p.style.top = `${dy + 54}px`; p.style.maxHeight = `${h - 74}px`;
@@ -133,7 +137,8 @@ export function createOverlay({ root, listen, update }) {
     const time = `${fmtHour(h)} · ${live ? partOfDay(h) : 'hour set by hand'}`;
     if (bBlend.textContent !== name) bBlend.textContent = name;
     if (bTime.textContent !== time) bTime.textContent = time;
-    const pillText = `☕ ${name} · ${fmtHour(h)}${live ? '' : ' · by hand'} · ${state.mode === 'window' ? 'Window Seat' : 'Focus'} ▾`;
+    const classic = state.mode === 'classic';
+    const pillText = classic ? '☕ Kaffeehaus Classic ▾' : `☕ ${name} · ${fmtHour(h)}${live ? '' : ' · by hand'} · ${state.mode === 'window' ? 'Window Seat' : 'Focus'} ▾`;
     if (pill.textContent !== pillText) pill.textContent = pillText;
     board.setAttribute('aria-label', `Café settings: ${name}, ${time}`);
     for (const p of Object.values(panels)) {
@@ -141,7 +146,9 @@ export function createOverlay({ root, listen, update }) {
       for (const b of p.blends) { const on = b.dataset.blend === name; b.setAttribute('aria-pressed', String(on)); b.style.cssText = p.T.btn + ';flex:0 0 auto' + (on ? ';' + p.T.on : ''); }
       if (document.activeElement !== p.hour) p.hour.value = String(h);
       p.hourOut.textContent = fmtHour(h); p.follow.setAttribute('aria-pressed', String(live));
-      const L = state.looks[state.mode];
+      p.classicNote.style.display = classic ? '' : 'none';
+      for (const n of p.roomOnly) n.style.display = classic ? 'none' : '';
+      const L = state.looks[classic ? 'focus' : state.mode];
       for (const [key] of LOOK_ROWS) { const s = p.looks[key], v = String(L[key]); if (s.input.value !== v && document.activeElement !== s.input) s.input.value = v; s.out.textContent = v + s.unit; }
       p.blendName.textContent = 'Blend: ' + name;
     }

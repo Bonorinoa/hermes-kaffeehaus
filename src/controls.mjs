@@ -34,7 +34,7 @@ export function mountControls(container, ctx, session) {
   const form = document.createElement('div'); form.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--ui-text-primary);font:14px/1.5 system-ui';
   const add = (tag, key, text) => { const n = document.createElement(tag); n.dataset.kh = key; if (text) n.textContent = text; nodes[key] = n; form.append(n); return n; };
   const label = (name, node) => { const l = document.createElement('label'); l.textContent = name + ' '; l.append(node); form.append(l); };
-  const select = add('select', 'mode'); for (const [value, text] of [['focus', 'Focus'], ['window', 'Window Seat']]) { const o = document.createElement('option'); o.value = value; o.textContent = text; select.append(o); } label('Mode', select);
+  const select = add('select', 'mode'); for (const [value, text] of [['window', 'Window Seat'], ['focus', 'Focus'], ['classic', 'Classic (palette, no room)']]) { const o = document.createElement('option'); o.value = value; o.textContent = text; select.append(o); } label('Mode', select);
   const width = add('input', 'width'); width.type = 'range'; width.min = '360'; width.max = '1000'; width.step = '10'; width.value = '780'; label('Reading width (px)', width);
   const hour = add('input', 'hour'); hour.type = 'range'; hour.min = '0'; hour.max = '23.99'; hour.step = '.01'; hour.value = '12'; label('Manual civil hour', hour);
   // Look sliders edit the active mode only; values are kept per mode in memory.
@@ -46,7 +46,7 @@ export function mountControls(container, ctx, session) {
     const out = document.createElement('output'); out.textContent = `${n.value}${unit}`; lookReadouts[key] = [out, unit];
     const l = document.createElement('label'); l.textContent = name + ' '; l.append(n, ' ', out); form.append(l); lookInputs[key] = n;
   }
-  const showLook = mode => { for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
+  const showLook = mode => { const room = mode !== 'classic'; for (const [key] of LOOK_LABELS) lookInputs[key].disabled = !room; if (!room) return; for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
   const resetLook = add('button', 'reset-look', 'Reset look');
   const follow = add('button', 'follow', 'Follow local time');
   const motion = add('button', 'motion', 'Motion off');
@@ -67,7 +67,7 @@ export function mountControls(container, ctx, session) {
     if (select.value !== s.mode) select.value = s.mode; // keep the tab in sync with the in-scene controls
     if (Number.isFinite(s.width) && width.value !== String(s.width)) width.value = String(s.width);
     if (s.looks) { looks = { focus: { ...s.looks.focus }, window: { ...s.looks.window } }; showLook(s.mode); }
-    say(`${s.mode === 'window' ? 'Window Seat' : 'Focus'} · ${s.clock.mode} · motion ${s.motion ? 'on' : 'off'}${s.reduced ? ' (OS reduced motion)' : ''} · ${s.motionRequested ? 'manual request' : 'manual off'} · ${s.peek ? 'room peek' : 'chat'}`);
+    say(`${{ window: 'Window Seat', focus: 'Focus', classic: 'Classic' }[s.mode]} · ${s.clock.mode} · motion ${s.motion ? 'on' : 'off'}${s.reduced ? ' (OS reduced motion)' : ''} · ${s.motionRequested ? 'manual request' : 'manual off'} · ${s.peek ? 'room peek' : 'chat'}`);
     follow.setAttribute('aria-pressed', String(s.clock.mode === 'auto'));
     motion.textContent = s.motion ? 'Motion on' : 'Motion off'; motion.setAttribute('aria-pressed', String(s.motion));
     peek.textContent = s.peek ? 'Back to chat' : 'Peek at room'; peek.setAttribute('aria-pressed', String(!!s.peek));
@@ -78,9 +78,9 @@ export function mountControls(container, ctx, session) {
   listen(select, 'change', () => update({ mode: select.value })); listen(width, 'input', () => update({ width: Number(width.value) }));
   listen(hour, 'input', () => update({ overrideHour: Number(hour.value) })); listen(follow, 'click', () => update({ overrideHour: null }));
   for (const [key] of LOOK_LABELS) listen(lookInputs[key], 'input', () => {
-    const mode = select.value; looks[mode] = { ...looks[mode], [key]: Number(lookInputs[key].value) }; showLook(mode); update({ look: { [key]: looks[mode][key] } });
+    const mode = select.value; if (mode === 'classic') return; looks[mode] = { ...looks[mode], [key]: Number(lookInputs[key].value) }; showLook(mode); update({ look: { [key]: looks[mode][key] } });
   });
-  listen(resetLook, 'click', () => { const mode = select.value; looks[mode] = { ...DEFAULT_LOOKS[mode] }; showLook(mode); update({ look: looks[mode] }); });
+  listen(resetLook, 'click', () => { const mode = select.value; if (mode === 'classic') return; looks[mode] = { ...DEFAULT_LOOKS[mode] }; showLook(mode); update({ look: looks[mode] }); });
   listen(select, 'change', () => showLook(select.value));
   listen(motion, 'click', () => { if (scene()?.enabled) update({ motionRequested: !scene().state().motionRequested }); });
   listen(peek, 'click', () => { if (scene()?.enabled) scene().setPeek(!scene().state().peek); });

@@ -169,6 +169,8 @@ const BLENDS = Object.freeze([
     focus: { blur: 5, brightness: 75, veil: 72, glass: 10 }, window: { blur: 0, brightness: 100, veil: 88, glass: 12 } },
   { name: 'Einspänner', note: 'the room comes through',
     focus: { blur: 2, brightness: 95, veil: 55, glass: 6 }, window: { blur: 0, brightness: 100, veil: 70, glass: 18 } }]);
+// classic: the Kaffeehaus palette and type over Hermes's own layout, no room.
+const MODES = Object.freeze(['window', 'focus', 'classic']);
 const LOOK_RANGES = Object.freeze({ blur: [0, 24], brightness: [20, 100], veil: [0, 100], glass: [0, 30] });
 
 const checkLook = look => {
@@ -196,7 +198,7 @@ function createController({ now, every, draw, onState = () => {} }) {
     if (disposed) return;
     const { look, ...rest } = patch;
     const next = { ...state, ...rest };
-    if (!['focus','window'].includes(next.mode)) throw new TypeError('unknown mode');
+    if (!MODES.includes(next.mode)) throw new TypeError('unknown mode');
     if (!Number.isFinite(next.width)) throw new TypeError('width must be finite');
     if (next.width<360 || next.width>1000) throw new RangeError('width must be 360–1000 px');
     // `look` patches the active mode only; `looks` replaces both (re-Apply keeps them).
@@ -244,13 +246,13 @@ const THEMES = {
     btn: 'flex:1;padding:6px 8px;border:1px solid #b59a73;background:transparent;border-radius:3px;color:#2a211b;font:inherit;cursor:pointer',
     on: 'background:#2a211b;color:#f2e9d6;border-color:#2a211b', muted: '#7a6650', accent: '#6b4a2f',
     sections: [['Platz', 'where you sit'], ['Uhrzeit', 'light in the room'], ['Hausmischungen', 'house blends'], ['À la carte', 'for this seat']],
-    seats: [['window', 'Fensterplatz'], ['focus', 'Fokus']], follow: 'Jetzt', reset: 'Zurücksetzen · reset this seat', german: true },
+    seats: [['window', 'Fensterplatz'], ['focus', 'Fokus'], ['classic', 'Klassisch']], follow: 'Jetzt', reset: 'Zurücksetzen · reset this seat', german: true },
   glass: { panel: 'background:rgba(22,26,36,.82);color:#eef0f4;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px 12px;box-shadow:0 20px 44px rgba(0,0,0,.45);font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;width:340px;backdrop-filter:blur(26px) saturate(1.5)',
     title: 'Café', sub: 'scene settings', head: 'font:600 10.5px/1 -apple-system,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,240,244,.68);margin:12px 0 7px',
     btn: 'flex:1;padding:6px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);border-radius:8px;color:#eef0f4;font:inherit;cursor:pointer',
     on: 'background:rgba(201,163,106,.28);border-color:rgba(201,163,106,.7)', muted: 'rgba(238,240,244,.6)', accent: '#c9a36a',
     sections: [['Seat', ''], ['Light', ''], ['House blends', ''], ['Look · this seat', '']],
-    seats: [['window', 'Window Seat'], ['focus', 'Focus']], follow: 'Follow clock', reset: 'Reset this seat', german: false } };
+    seats: [['window', 'Window Seat'], ['focus', 'Focus'], ['classic', 'Classic']], follow: 'Follow clock', reset: 'Reset this seat', german: false } };
 
 const blendOf = looks => {
   const same = (a, b) => Object.keys(LOOK_RANGES).every(k => a[k] === b[k]);
@@ -291,6 +293,8 @@ function createOverlay({ root, listen, update }) {
 
     head(0); const seatRow = row();
     const seats = T.seats.map(([mode, text]) => { const b = button(seatRow, text, () => update({ mode })); b.dataset.mode = mode; return b; });
+    const classicNote = el('p', `margin:10px 0 2px;font-style:italic;color:${T.muted}`, 'Classic is the Kaffeehaus palette and type without the room. Pick a seat above to step into the café.');
+    panel.append(classicNote); const roomFrom = panel.childElementCount;
     head(1); const hourRow = row(); const hour = range([0, 23.75], 0.25, 'Hour'); hour.style.flex = '1';
     const hourOut = el('span', `font-variant-numeric:tabular-nums;color:${T.muted}`);
     listen(hour, 'input', () => update({ overrideHour: Number(hour.value) }));
@@ -313,7 +317,8 @@ function createOverlay({ root, listen, update }) {
     const foot = el('div', `display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid ${T.german ? '#d7c6a6' : 'rgba(255,255,255,.1)'};font-size:12px;color:${T.muted}`);
     const blendName = el('span'); const reset = el('button', `background:none;border:0;color:${T.accent};text-decoration:underline;cursor:pointer;font:inherit`, T.reset); reset.type = 'button';
     foot.append(blendName, reset); panel.append(foot);
-    panels[name] = { panel, close, reset, seats, hour, hourOut, follow, blends, looks, blendName, T };
+    const roomOnly = [...panel.children].slice(roomFrom);
+    panels[name] = { panel, close, reset, seats, hour, hourOut, follow, blends, looks, blendName, T, classicNote, roomOnly };
   }
   root.append(board, pill, panels.paper.panel, panels.glass.panel);
 
@@ -346,8 +351,9 @@ function createOverlay({ root, listen, update }) {
       let left = cord - 180 - 22; if (left < 16) left = Math.min(cord + 22, g.chatLeft - 220);
       const top = Math.max(12, band - bh - 8);
       board.style.left = `${dx + left}px`; board.style.top = `${dy + top}px`;
-      const p = panels.paper.panel, ph = Math.min(p.scrollHeight || 560, h - 64);
-      p.style.left = `${dx + Math.max(16, Math.min(left, g.chatLeft - 350))}px`; p.style.top = `${dy + Math.max(48, Math.min(top, h - ph - 16))}px`; p.style.maxHeight = `${h - 64}px`;
+      // Open the card over the chat column, never over the room: you change the hour to watch the window.
+      const p = panels.paper.panel;
+      p.style.left = `${dx + Math.max(g.chatLeft + 16, Math.min(g.chatLeft + 24, r.width - 346))}px`; p.style.top = `${dy + 48}px`; p.style.maxHeight = `${h - 64}px`;
     } else {
       pill.style.left = `${dx + 16}px`; pill.style.top = `${dy + 14}px`;
       const p = panels.glass.panel; p.style.left = `${dx + 16}px`; p.style.top = `${dy + 54}px`; p.style.maxHeight = `${h - 74}px`;
@@ -365,7 +371,8 @@ function createOverlay({ root, listen, update }) {
     const time = `${fmtHour(h)} · ${live ? partOfDay(h) : 'hour set by hand'}`;
     if (bBlend.textContent !== name) bBlend.textContent = name;
     if (bTime.textContent !== time) bTime.textContent = time;
-    const pillText = `☕ ${name} · ${fmtHour(h)}${live ? '' : ' · by hand'} · ${state.mode === 'window' ? 'Window Seat' : 'Focus'} ▾`;
+    const classic = state.mode === 'classic';
+    const pillText = classic ? '☕ Kaffeehaus Classic ▾' : `☕ ${name} · ${fmtHour(h)}${live ? '' : ' · by hand'} · ${state.mode === 'window' ? 'Window Seat' : 'Focus'} ▾`;
     if (pill.textContent !== pillText) pill.textContent = pillText;
     board.setAttribute('aria-label', `Café settings: ${name}, ${time}`);
     for (const p of Object.values(panels)) {
@@ -373,7 +380,9 @@ function createOverlay({ root, listen, update }) {
       for (const b of p.blends) { const on = b.dataset.blend === name; b.setAttribute('aria-pressed', String(on)); b.style.cssText = p.T.btn + ';flex:0 0 auto' + (on ? ';' + p.T.on : ''); }
       if (document.activeElement !== p.hour) p.hour.value = String(h);
       p.hourOut.textContent = fmtHour(h); p.follow.setAttribute('aria-pressed', String(live));
-      const L = state.looks[state.mode];
+      p.classicNote.style.display = classic ? '' : 'none';
+      for (const n of p.roomOnly) n.style.display = classic ? 'none' : '';
+      const L = state.looks[classic ? 'focus' : state.mode];
       for (const [key] of LOOK_ROWS) { const s = p.looks[key], v = String(L[key]); if (s.input.value !== v && document.activeElement !== s.input) s.input.value = v; s.out.textContent = v + s.unit; }
       p.blendName.textContent = 'Blend: ' + name;
     }
@@ -434,10 +443,19 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     restores.push(()=>old?node.style.setProperty(name,old,p):node.style.removeProperty(name));
     node.style.setProperty(name,value,priority);
   };
+  // Classic: the house palette (espresso ground, oxblood, sand, cream) and editorial type,
+  // scoped to this chat surface through Hermes's own theme variables. Hermes keeps its layout.
+  const PALETTE={'--ui-text-primary':'#efe6d6','--ui-text-secondary':'#dccbb0','--ui-text-tertiary':'#bba78a','--ui-text-quaternary':'#8f7f69',
+    '--ui-accent':'#a8443c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
+    '--ui-chat-bubble-background':'#2d221e','--ui-inline-code-background':'rgba(201,163,106,.13)','--ui-inline-code-foreground':'#e6c99a'};
+  const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
+    left:dock.style.left,right:dock.style.right,transform:dock.style.transform,font:content.style.fontFamily,palette:{}};
+  for(const k of Object.keys(PALETTE))native.palette[k]=surface.style.getPropertyValue(k);
   const id=`kh-${++sceneSerial}`;surface.setAttribute('data-kaffeehaus',id);
   own(surface,'--composer-width','780px');own(bounds,'background-color','transparent');own(bounds,'isolation','isolate');
   for (const p of ['width','margin-left','margin-right']) own(content,p,content.style.getPropertyValue(p));
   for (const p of ['left','right','transform','translate']) own(dock,p,dock.style.getPropertyValue(p));
+  own(content,'font-family',native.font);for(const k of Object.keys(PALETTE))own(surface,k,native.palette[k]);
   // Tailwind 4 uses individual translate; it composes with transform. Own both
   // mechanisms while mounted, then restore each original value and priority.
   dock.style.translate='none';
@@ -475,11 +493,25 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     if(controller&&(!surface.isConnected||one('aui_thread-content')!==content||one('composer-dock')!==dock||surface.querySelector('[data-popped-out]')||!supportedAppearance())){dispose();onState({disabled:true,reason:'Off: host hooks or appearance changed; native state restored'});return}
     const r=bounds.getBoundingClientRect();
     if(!r.width||!r.height)return;
-    const g=layout({w:r.width,h:r.height,mode:state.mode,width:state.width,peek});
+    const classic=state.mode==='classic'&&!peek;
+    for(const [k,v] of Object.entries(PALETTE))surface.style.setProperty(k,classic?v:native.palette[k]);
+    content.style.fontFamily=classic?'"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif':native.font;
+    if(classic){
+      // Hermes's own geometry; the ground is the house palette instead of the room.
+      surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
+      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;
+      canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
+      veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
+      overlay.render(state,layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
+      return;
+    }
+    canvas.style.display='';
+    const mode=state.mode==='classic'?'focus':state.mode; // peek from Classic shows the room as Focus does
+    const g=layout({w:r.width,h:r.height,mode,width:state.width,peek});
     surface.style.setProperty('--composer-width',`${g.chatWidth}px`);
     content.style.width=`${g.chatWidth}px`;content.style.marginLeft=`${g.chatLeft}px`;content.style.marginRight='0px';
     dock.style.left=`${g.chatLeft+g.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';
-    const focus=state.mode==='focus', L=state.looks[state.mode], narrow=!focus&&!g.wide;
+    const focus=mode==='focus', L=state.looks[mode], narrow=!focus&&!g.wide;
     // Narrow Window Seat puts text over the room, so keep a readability floor there.
     const blur=narrow?Math.max(L.blur,10):L.blur, bright=(narrow?Math.min(L.brightness,60):L.brightness)/100;
     const glass=narrow?Math.max(L.glass,10):L.glass;
@@ -577,7 +609,7 @@ function mountControls(container, ctx, session) {
   const form = document.createElement('div'); form.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--ui-text-primary);font:14px/1.5 system-ui';
   const add = (tag, key, text) => { const n = document.createElement(tag); n.dataset.kh = key; if (text) n.textContent = text; nodes[key] = n; form.append(n); return n; };
   const label = (name, node) => { const l = document.createElement('label'); l.textContent = name + ' '; l.append(node); form.append(l); };
-  const select = add('select', 'mode'); for (const [value, text] of [['focus', 'Focus'], ['window', 'Window Seat']]) { const o = document.createElement('option'); o.value = value; o.textContent = text; select.append(o); } label('Mode', select);
+  const select = add('select', 'mode'); for (const [value, text] of [['window', 'Window Seat'], ['focus', 'Focus'], ['classic', 'Classic (palette, no room)']]) { const o = document.createElement('option'); o.value = value; o.textContent = text; select.append(o); } label('Mode', select);
   const width = add('input', 'width'); width.type = 'range'; width.min = '360'; width.max = '1000'; width.step = '10'; width.value = '780'; label('Reading width (px)', width);
   const hour = add('input', 'hour'); hour.type = 'range'; hour.min = '0'; hour.max = '23.99'; hour.step = '.01'; hour.value = '12'; label('Manual civil hour', hour);
   // Look sliders edit the active mode only; values are kept per mode in memory.
@@ -589,7 +621,7 @@ function mountControls(container, ctx, session) {
     const out = document.createElement('output'); out.textContent = `${n.value}${unit}`; lookReadouts[key] = [out, unit];
     const l = document.createElement('label'); l.textContent = name + ' '; l.append(n, ' ', out); form.append(l); lookInputs[key] = n;
   }
-  const showLook = mode => { for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
+  const showLook = mode => { const room = mode !== 'classic'; for (const [key] of LOOK_LABELS) lookInputs[key].disabled = !room; if (!room) return; for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
   const resetLook = add('button', 'reset-look', 'Reset look');
   const follow = add('button', 'follow', 'Follow local time');
   const motion = add('button', 'motion', 'Motion off');
@@ -610,7 +642,7 @@ function mountControls(container, ctx, session) {
     if (select.value !== s.mode) select.value = s.mode; // keep the tab in sync with the in-scene controls
     if (Number.isFinite(s.width) && width.value !== String(s.width)) width.value = String(s.width);
     if (s.looks) { looks = { focus: { ...s.looks.focus }, window: { ...s.looks.window } }; showLook(s.mode); }
-    say(`${s.mode === 'window' ? 'Window Seat' : 'Focus'} · ${s.clock.mode} · motion ${s.motion ? 'on' : 'off'}${s.reduced ? ' (OS reduced motion)' : ''} · ${s.motionRequested ? 'manual request' : 'manual off'} · ${s.peek ? 'room peek' : 'chat'}`);
+    say(`${{ window: 'Window Seat', focus: 'Focus', classic: 'Classic' }[s.mode]} · ${s.clock.mode} · motion ${s.motion ? 'on' : 'off'}${s.reduced ? ' (OS reduced motion)' : ''} · ${s.motionRequested ? 'manual request' : 'manual off'} · ${s.peek ? 'room peek' : 'chat'}`);
     follow.setAttribute('aria-pressed', String(s.clock.mode === 'auto'));
     motion.textContent = s.motion ? 'Motion on' : 'Motion off'; motion.setAttribute('aria-pressed', String(s.motion));
     peek.textContent = s.peek ? 'Back to chat' : 'Peek at room'; peek.setAttribute('aria-pressed', String(!!s.peek));
@@ -621,9 +653,9 @@ function mountControls(container, ctx, session) {
   listen(select, 'change', () => update({ mode: select.value })); listen(width, 'input', () => update({ width: Number(width.value) }));
   listen(hour, 'input', () => update({ overrideHour: Number(hour.value) })); listen(follow, 'click', () => update({ overrideHour: null }));
   for (const [key] of LOOK_LABELS) listen(lookInputs[key], 'input', () => {
-    const mode = select.value; looks[mode] = { ...looks[mode], [key]: Number(lookInputs[key].value) }; showLook(mode); update({ look: { [key]: looks[mode][key] } });
+    const mode = select.value; if (mode === 'classic') return; looks[mode] = { ...looks[mode], [key]: Number(lookInputs[key].value) }; showLook(mode); update({ look: { [key]: looks[mode][key] } });
   });
-  listen(resetLook, 'click', () => { const mode = select.value; looks[mode] = { ...DEFAULT_LOOKS[mode] }; showLook(mode); update({ look: looks[mode] }); });
+  listen(resetLook, 'click', () => { const mode = select.value; if (mode === 'classic') return; looks[mode] = { ...DEFAULT_LOOKS[mode] }; showLook(mode); update({ look: looks[mode] }); });
   listen(select, 'change', () => showLook(select.value));
   listen(motion, 'click', () => { if (scene()?.enabled) update({ motionRequested: !scene().state().motionRequested }); });
   listen(peek, 'click', () => { if (scene()?.enabled) scene().setPeek(!scene().state().peek); });

@@ -27,6 +27,15 @@ test('manual controls are validated; OS reduced motion cannot be overridden', as
   assert.throws(() => c.update({width:12}),RangeError);
   c.dispose();
 });
+test('Classic is a seat: the room looks survive a visit to it', async () => {
+  const { createController, MODES } = await import(source);
+  assert.deepEqual(MODES, ['window', 'focus', 'classic']);
+  const c = createController({now: () => new Date(),every: () => () => {},draw() {}});
+  c.update({mode:'window', look:{veil:40}});
+  c.update({mode:'classic'}); assert.equal(c.state().mode,'classic');
+  c.update({mode:'window'}); assert.equal(c.state().looks.window.veil,40);
+  c.dispose();
+});
 test('automatic clock samples independently of decorative motion and disposes once', async () => {
   assert.ok(fs.existsSync(source), 'clock controller is implemented');
   const { createController } = await import(source);

@@ -13,6 +13,8 @@ export const BLENDS = Object.freeze([
     focus: { blur: 5, brightness: 75, veil: 72, glass: 10 }, window: { blur: 0, brightness: 100, veil: 88, glass: 12 } },
   { name: 'Einspänner', note: 'the room comes through',
     focus: { blur: 2, brightness: 95, veil: 55, glass: 6 }, window: { blur: 0, brightness: 100, veil: 70, glass: 18 } }]);
+// classic: the Kaffeehaus palette and type over Hermes's own layout, no room.
+export const MODES = Object.freeze(['window', 'focus', 'classic']);
 export const LOOK_RANGES = Object.freeze({ blur: [0, 24], brightness: [20, 100], veil: [0, 100], glass: [0, 30] });
 
 const checkLook = look => {
@@ -40,7 +42,7 @@ export function createController({ now, every, draw, onState = () => {} }) {
     if (disposed) return;
     const { look, ...rest } = patch;
     const next = { ...state, ...rest };
-    if (!['focus','window'].includes(next.mode)) throw new TypeError('unknown mode');
+    if (!MODES.includes(next.mode)) throw new TypeError('unknown mode');
     if (!Number.isFinite(next.width)) throw new TypeError('width must be finite');
     if (next.width<360 || next.width>1000) throw new RangeError('width must be 360–1000 px');
     // `look` patches the active mode only; `looks` replaces both (re-Apply keeps them).

@@ -52,10 +52,19 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     restores.push(()=>old?node.style.setProperty(name,old,p):node.style.removeProperty(name));
     node.style.setProperty(name,value,priority);
   };
+  // Classic: the house palette (espresso ground, oxblood, sand, cream) and editorial type,
+  // scoped to this chat surface through Hermes's own theme variables. Hermes keeps its layout.
+  const PALETTE={'--ui-text-primary':'#efe6d6','--ui-text-secondary':'#dccbb0','--ui-text-tertiary':'#bba78a','--ui-text-quaternary':'#8f7f69',
+    '--ui-accent':'#a8443c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
+    '--ui-chat-bubble-background':'#2d221e','--ui-inline-code-background':'rgba(201,163,106,.13)','--ui-inline-code-foreground':'#e6c99a'};
+  const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
+    left:dock.style.left,right:dock.style.right,transform:dock.style.transform,font:content.style.fontFamily,palette:{}};
+  for(const k of Object.keys(PALETTE))native.palette[k]=surface.style.getPropertyValue(k);
   const id=`kh-${++sceneSerial}`;surface.setAttribute('data-kaffeehaus',id);
   own(surface,'--composer-width','780px');own(bounds,'background-color','transparent');own(bounds,'isolation','isolate');
   for (const p of ['width','margin-left','margin-right']) own(content,p,content.style.getPropertyValue(p));
   for (const p of ['left','right','transform','translate']) own(dock,p,dock.style.getPropertyValue(p));
+  own(content,'font-family',native.font);for(const k of Object.keys(PALETTE))own(surface,k,native.palette[k]);
   // Tailwind 4 uses individual translate; it composes with transform. Own both
   // mechanisms while mounted, then restore each original value and priority.
   dock.style.translate='none';
@@ -93,11 +102,25 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     if(controller&&(!surface.isConnected||one('aui_thread-content')!==content||one('composer-dock')!==dock||surface.querySelector('[data-popped-out]')||!supportedAppearance())){dispose();onState({disabled:true,reason:'Off: host hooks or appearance changed; native state restored'});return}
     const r=bounds.getBoundingClientRect();
     if(!r.width||!r.height)return;
-    const g=layout({w:r.width,h:r.height,mode:state.mode,width:state.width,peek});
+    const classic=state.mode==='classic'&&!peek;
+    for(const [k,v] of Object.entries(PALETTE))surface.style.setProperty(k,classic?v:native.palette[k]);
+    content.style.fontFamily=classic?'"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif':native.font;
+    if(classic){
+      // Hermes's own geometry; the ground is the house palette instead of the room.
+      surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
+      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;
+      canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
+      veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
+      overlay.render(state,layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
+      return;
+    }
+    canvas.style.display='';
+    const mode=state.mode==='classic'?'focus':state.mode; // peek from Classic shows the room as Focus does
+    const g=layout({w:r.width,h:r.height,mode,width:state.width,peek});
     surface.style.setProperty('--composer-width',`${g.chatWidth}px`);
     content.style.width=`${g.chatWidth}px`;content.style.marginLeft=`${g.chatLeft}px`;content.style.marginRight='0px';
     dock.style.left=`${g.chatLeft+g.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';
-    const focus=state.mode==='focus', L=state.looks[state.mode], narrow=!focus&&!g.wide;
+    const focus=mode==='focus', L=state.looks[mode], narrow=!focus&&!g.wide;
     // Narrow Window Seat puts text over the room, so keep a readability floor there.
     const blur=narrow?Math.max(L.blur,10):L.blur, bright=(narrow?Math.min(L.brightness,60):L.brightness)/100;
     const glass=narrow?Math.max(L.glass,10):L.glass;
