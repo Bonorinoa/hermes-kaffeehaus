@@ -45,7 +45,7 @@ test('automatic clock samples independently of decorative motion and disposes on
     every(fn, ms) { assert.equal(ms, 1000); tick = fn; return () => clears++; },
     draw: s => draws.push(s), onState: s => states.push(s)});
   assert.equal(c.state().clock.mode, 'auto');
-  assert.equal(c.state().motion, false);
+  assert.equal(c.state().motion, true, 'motion is on by default');
   date = new Date(2026, 10, 15, 0, 0, 1); tick();
   assert.ok(c.state().clock.hour < .001);
   assert.equal(draws.length, 2);

@@ -1,9 +1,14 @@
 import { createController } from './controller.mjs';
 import { layout } from './layout.mjs';
 import { createOverlay } from './overlay.mjs';
+import { createCharacter } from './character.mjs';
+
+const DUR = 360; // ms for seat changes; reduced motion snaps
+const ease = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
 let sceneSerial = 0;
-// All selectors below are private host hooks. No content, session ids or atoms read.
+// All selectors below are private host hooks. No content or session ids are read; the only
+// host state read is the public SDK's two booleans host.state.busy / awaitingResponse.
 export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => {}} = {}) {
   const refused = reason => ({enabled:false,reason,dispose() {}});
   if (!surface?.matches('[data-chat-surface]') || !surface.isConnected || surface.hasAttribute('data-kaffeehaus')) return refused('Unavailable or already owned chat surface');
@@ -54,17 +59,18 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
   };
   // Classic: the house palette (espresso ground, oxblood, sand, cream) and editorial type,
   // scoped to this chat surface through Hermes's own theme variables. Hermes keeps its layout.
-  const PALETTE={'--ui-text-primary':'#efe6d6','--ui-text-secondary':'#dccbb0','--ui-text-tertiary':'#bba78a','--ui-text-quaternary':'#8f7f69',
-    '--ui-accent':'#a8443c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
+  const PALETTE={'--ui-text-primary':'#efe6d6','--ui-text-secondary':'#dccbb0','--ui-text-tertiary':'#c8b394','--ui-text-quaternary':'#a8967c',
+    '--ui-accent':'#b4534a','--muted-foreground':'#cbb38c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
     '--ui-chat-bubble-background':'#2d221e','--ui-inline-code-background':'rgba(201,163,106,.13)','--ui-inline-code-foreground':'#e6c99a'};
+  const KEYS=Object.keys(PALETTE);
   const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
     left:dock.style.left,right:dock.style.right,transform:dock.style.transform,translate:dock.style.translate,font:content.style.fontFamily,pad:content.style.paddingTop,palette:{}};
-  for(const k of Object.keys(PALETTE))native.palette[k]=surface.style.getPropertyValue(k);
+  for(const k of KEYS)native.palette[k]=surface.style.getPropertyValue(k);
   const id=`kh-${++sceneSerial}`;surface.setAttribute('data-kaffeehaus',id);
   own(surface,'--composer-width','780px');own(bounds,'background-color','transparent');own(bounds,'isolation','isolate');
   for (const p of ['width','margin-left','margin-right']) own(content,p,content.style.getPropertyValue(p));
   for (const p of ['left','right','transform','translate']) own(dock,p,dock.style.getPropertyValue(p));
-  own(content,'font-family',native.font);own(content,'padding-top',native.pad);for(const k of Object.keys(PALETTE))own(surface,k,native.palette[k]);
+  own(content,'font-family',native.font);own(content,'padding-top',native.pad);for(const k of KEYS)own(surface,k,native.palette[k]);
   // Tailwind 4 uses individual translate; it composes with transform. Own both
   // mechanisms while mounted, then restore each original value and priority.
   dock.style.translate='none';
@@ -77,8 +83,45 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
   back.style.cssText='position:absolute;top:12px;right:12px;z-index:50;padding:10px 16px;color:var(--ui-text-primary);background:var(--ui-panel-background,var(--ui-chat-surface-background));border:2px solid var(--ui-stroke-secondary);border-radius:6px';
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   // In-scene controls (menu board / glass pill). Errors from bad patches are ignored, never thrown into the app.
-  const overlay=createOverlay({root:bounds,listen:(n,t,f)=>off.push(ctx.addEventListener(n,t,f)),update:patch=>{try{if(!disposed)controller.update(patch)}catch{}}});
+  const overlay=createOverlay({root:bounds,listen:(n,t,f)=>off.push(ctx.addEventListener(n,t,f)),update:patch=>{try{if(!disposed)controller.update(patch)}catch{}},
+    peek:()=>setPeek(true),reduced:()=>reduced.matches});
   let loop=null, frame=0;
+  // The note-taker follows only whether Hermes is working, never what was said.
+  const character=createCharacter(), host=sdk?.host?.state;
+  const flag=a=>{try{return !!a?.get?.()}catch{return false}};
+  let act={state:'still',since:0};
+  // Seat changes: the old picture fades out over the new one, and the chat column eases into place.
+  let shown=null, tween=null; const ghosts=new Set();
+  const fade=()=>{
+    if(reduced.matches)return;
+    const g=[];
+    if(canvas.style.display!=='none'&&canvas.width){const c=document.createElement('canvas');c.width=canvas.width;c.height=canvas.height;c.getContext('2d')?.drawImage(canvas,0,0);c.style.cssText=canvas.style.cssText;c.style.zIndex='-1';g.push(c)}
+    const v=veil.cloneNode(false);g.push(v);
+    for(const n of g){n.setAttribute('aria-hidden','true');n.style.transition=`opacity ${DUR}ms ease`;n.style.opacity='1';ghosts.add(n)}
+    veil.after(...g);void veil.offsetWidth;for(const n of g)n.style.opacity='0';
+    setTimeout(()=>{for(const n of g){n.remove();ghosts.delete(n)}},DUR+80);
+  };
+  const geo=s=>{
+    if(s.native){surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
+      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;dock.style.translate=native.translate;content.style.paddingTop='52px';return}
+    surface.style.setProperty('--composer-width',`${s.chatWidth}px`);content.style.width=`${s.chatWidth}px`;content.style.marginLeft=`${s.chatLeft}px`;content.style.marginRight='0px';
+    dock.style.left=`${s.chatLeft+s.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';dock.style.translate='none';content.style.paddingTop=native.pad;
+  };
+  const rel=()=>{const a=content.getBoundingClientRect(),b=bounds.getBoundingClientRect();return {chatLeft:a.left-b.left,chatWidth:a.width}};
+  const place=(s,animate)=>{
+    if(tween){tween.s=s;return}
+    if(!animate||reduced.matches)return geo(s);
+    const from=rel();geo(s);const to=rel();
+    if(Math.abs(from.chatLeft-to.chatLeft)<2&&Math.abs(from.chatWidth-to.chatWidth)<2)return;
+    tween={s,start:performance.now()};geo(from);
+    const step=now=>{
+      if(disposed||!tween)return;
+      const t=Math.min(1,(now-tween.start)/DUR),e=ease(t);
+      if(t>=1){const last=tween.s;tween=null;geo(last);return}
+      geo({chatLeft:from.chatLeft+(to.chatLeft-from.chatLeft)*e,chatWidth:from.chatWidth+(to.chatWidth-from.chatWidth)*e});requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
   let disposed=false,tearingDown=false, controller, peek=false, priorFocus=null, peekRestore=[];
   const setPeek=value=>{
     if(disposed||peek===value)return;
@@ -103,24 +146,23 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     const r=bounds.getBoundingClientRect();
     if(!r.width||!r.height)return;
     const classic=state.mode==='classic'&&!peek;
+    const mode=state.mode==='classic'?'focus':state.mode; // peek from Classic shows the room as Focus does
+    const g=layout({w:r.width,h:r.height,mode,width:state.width,peek});
+    const key=classic?'classic':`${mode}|${peek}|${g.wide}`, changed=shown!==null&&shown!==key;
+    if(changed)fade();
+    shown=key;
     for(const [k,v] of Object.entries(PALETTE))surface.style.setProperty(k,classic?v:native.palette[k]);
     content.style.fontFamily=classic?'"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif':native.font;
     if(classic){
-      // Hermes's own geometry; the ground is the house palette instead of the room.
-      surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
-      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;dock.style.translate=native.translate;
-      content.style.paddingTop='52px'; // room for the pill above the first message
+      // Hermes's own geometry (plus room for the pill); the ground is the house palette instead of the room.
+      place({native:true},changed);
       canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
       veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
       overlay.render(state,layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
       return;
     }
-    canvas.style.display='';dock.style.translate='none';content.style.paddingTop=native.pad;
-    const mode=state.mode==='classic'?'focus':state.mode; // peek from Classic shows the room as Focus does
-    const g=layout({w:r.width,h:r.height,mode,width:state.width,peek});
-    surface.style.setProperty('--composer-width',`${g.chatWidth}px`);
-    content.style.width=`${g.chatWidth}px`;content.style.marginLeft=`${g.chatLeft}px`;content.style.marginRight='0px';
-    dock.style.left=`${g.chatLeft+g.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';
+    canvas.style.display='';
+    place({chatLeft:g.chatLeft,chatWidth:g.chatWidth},changed);
     const focus=mode==='focus', L=state.looks[mode], narrow=!focus&&!g.wide;
     // Narrow Window Seat puts text over the room, so keep a readability floor there.
     const blur=narrow?Math.max(L.blur,10):L.blur, bright=(narrow?Math.min(L.brightness,60):L.brightness)/100;
@@ -144,7 +186,7 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     const H=Math.max(144,Math.ceil(r.height/g.scale)), band=H-144;
     canvas.width=g.W;canvas.height=H;canvas.style.width=`${g.W*g.scale}px`;canvas.style.height=`${H*g.scale}px`;
     paint.save();paint.translate(0,band);
-    K.draw(paint,g.W,state.clock.hour,frame,{wx:g.wx,tx:g.tx,state:state.motion?'idle':'still'});
+    K.draw(paint,g.W,state.clock.hour,frame,{wx:g.wx,tx:g.tx,state:state.motion?act.state:'still',since:act.since});
     paint.restore();
     if(band>0){
       paint.drawImage(canvas,0,band,g.W,1,0,0,g.W,band);
@@ -157,13 +199,14 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     if(peek)setPeek(false);
     disposed=true;
     controller?.dispose();loop?.dispose();loop=null;for(const fn of off.reverse())fn();
+    tween=null;for(const n of ghosts)n.remove();ghosts.clear();
     overlay.dispose();canvas.remove();veil.remove();token.remove();surface.removeAttribute('data-kaffeehaus');for(const fn of restores.reverse())fn();
     onState({disabled:true,reason:'Off. Prior settings restored.'});
   };
   try {
     const report=state=>{
       if(disposed)return;
-      if(state.motion && !loop && sdk?.createBudgetedLoop) loop=sdk.createBudgetedLoop(()=>{if(!disposed){frame++;draw(controller.state())}},{fps:4,idleWhen:()=>disposed||!bounds.isConnected});
+      if(state.motion && !loop && sdk?.createBudgetedLoop) loop=sdk.createBudgetedLoop(()=>{if(!disposed){const s=controller.state();frame++;act=character.step({busy:flag(host?.busy),awaiting:flag(host?.awaitingResponse),hour:s.clock.hour,motion:s.motion});draw(s)}},{fps:4,idleWhen:()=>disposed||!bounds.isConnected});
       if(!state.motion && loop){loop.dispose();loop=null;frame=0;}
       onState({...state,peek,motionSupported:!!sdk?.createBudgetedLoop});
     };

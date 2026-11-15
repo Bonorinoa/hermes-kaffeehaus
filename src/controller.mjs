@@ -28,8 +28,9 @@ const checkLook = look => {
 // Pure local state; scheduler supplied by the SDK adapter, never content or RPC.
 export function createController({ now, every, draw, onState = () => {} }) {
   let disposed = false;
-  let state = { clock: null, motion: false, overrideHour: null,
-    mode: 'focus', width: 780, motionRequested: false, reduced: false,
+  // Motion is on by default: the note-taker is half the point. OS reduced motion still wins.
+  let state = { clock: null, motion: true, overrideHour: null,
+    mode: 'focus', width: 780, motionRequested: true, reduced: false,
     looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } } };
   const sample = () => {
     if (disposed) return;
