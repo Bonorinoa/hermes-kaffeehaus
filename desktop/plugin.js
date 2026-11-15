@@ -14,12 +14,15 @@ const K=(()=>{const window={};
  *   drawCharacter(ctx,W,hour,frame,o)  chair + note-taker only; transparent elsewhere (no tint)
  *   drawTint(ctx,W,hour)               civil-time grade, fills the whole canvas; draw last
  *   draw(...)                          all three in order
- *   o = { wx, tx, state }  wx window centre x, tx table centre x (logical px);
- *                          state 'busy' | 'idle' | 'still'
+ *   o = { wx, tx, state, since, passers }  wx window centre x, tx table centre x (logical px);
+ *                          state 'idle'|'busy'|'still'|'lookup'|'wrapup'|'doze'|'sleep' (unknown = idle);
+ *                          since = frames since the state began (one-shots); passers:false hides passers-by
  *   hour: local civil time as a float 0..24. Illustrative sky, NOT astronomical sunrise.
  *
  * State meaning (art only): busy = writing; idle = resting, with a slow glance/think; still = one
- * fixed frame for reduced motion/off. None of these says anything about success or failure of a task.
+ * fixed frame for reduced motion/off; lookup = pen up, head rises (first words arrive); wrapup = one-shot 16 frames:
+ * book closes, lean back, sip, hold relaxed; doze = late-night nodding; sleep = empty chair, figure in a sleeping bag.
+ * Passers-by cross the window deterministically from (hour, frame). None of these says anything about success or failure of a task.
  * Caller advances `frame` at about 4 per second. 'still' ignores `frame` (always frame 0).
  */
 (function (root) {
@@ -37,31 +40,93 @@ const K=(()=>{const window={};
   const wrapHour = h => ((h % 24) + 24) % 24;      // callers pass [0,24); wrap defensively so 24 == 0 (cyclic at midnight)
   const hourOf = d => d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;   // machine-local civil time
 
-  /* ---- character poses: data, not code. Offsets are logical px relative to the writing pose. ----
-   * pen: pen-hand nudge in y (rest lifts the pen 1 px off the page, write-b presses down 1 px). eye: pupil shift in x (-1 = toward the window).
-   * hand: 'page' (pen on notebook) or 'chin' (pen raised, forearm up). Torso bob comes from poseFor. */
+  /* ---- character poses: data, not code. Offsets are logical px relative to the idle writing pose. ----
+   * pen: pen-hand nudge in y (rest lifts the pen 1 px off the page, write-b presses down 1 px). eye: glasses x shift (-1 = toward the window).
+   * ey: glasses y shift (eyes up/down inside the head); hx/hy: head nudge forward/down; lean: torso+head back toward the chair (neg = slump forward);
+   * tilt: extra hair rows; back: head tipped back; ext: legs extended under the table.
+   * hand: 'page' (pen on notebook, travels dx along it) 'chin' 'flat' 'reach' 'carry' 'sip' 'cross'. Torso bob comes from poseFor. */
   const POSES = {
-    'write-a': { pen: 0, eye: 0, hand: 'page' },
-    'write-b': { pen: 1, eye: 0, hand: 'page' },
+    // busy: head bowed toward the page (forward + down 1, eyes down 1); the writing hand travels along the notebook (poseFor dx)
+    'write-a': { pen: 0, eye: 0, hx: 1, hy: 1, ey: 1, tilt: 1, hand: 'page' },
+    'write-b': { pen: 1, eye: 0, hx: 1, hy: 1, ey: 1, tilt: 1, hand: 'page' },
     'rest':    { pen: -1, eye: 0, hand: 'page' },
     'glance':  { pen: 0, eye: -1, hand: 'page' },
-    'think':   { pen: 0, eye: 0, hand: 'chin' }
+    'think':   { pen: 0, eye: 0, hand: 'chin' },
+    // lookup: head stays seated on the shoulders; torso leans back 1, glasses/eyes shift up, pen lifts off the page
+    'up1':     { pen: -3, eye: -1, ey: -1, lean: 1, hand: 'page' },
+    'up2':     { pen: -3, eye: 0, ey: -1, lean: 1, hand: 'page' },
+    // wrapup: close book, lean back, take the cup, sip, put it back, settle back with arms crossed
+    'w-close': { eye: 0, hand: 'flat' },
+    'w-lean':  { eye: 0, lean: 1, hand: 'flat' },
+    'reach':   { eye: 0, hand: 'reach' },
+    'carry':   { eye: 0, lean: 1, hand: 'carry' },
+    'sip':     { lean: 1, hand: 'sip', closed: 1 },
+    'relax':   { lean: 2, hand: 'cross', closed: 1, back: 1, ext: 1 },
+    // doze: eyes shut, head dips forward in 3 steps (lean<0 = torso and head slump forward, hy dips the head, tilt shows more hair, ey = glasses slip)
+    'dz0':     { hand: 'flat', closed: 1 },
+    'dz1':     { hand: 'flat', closed: 1, lean: -1, hy: 1, ey: 1 },
+    'dz2':     { hand: 'flat', closed: 1, lean: -2, hy: 3, tilt: 2, ey: 1 }
   };
+  const STATES = ['idle', 'busy', 'still', 'lookup', 'wrapup', 'doze', 'sleep'];
+  const WRAP = ['w-close', 'w-close', 'w-close', 'w-lean', 'reach', 'reach', 'carry', 'sip', 'sip', 'sip', 'sip', 'carry', 'reach', 'reach', 'w-lean'];
+  const WRAP_LEN = 16;                               // wrapup is one-shot: 16 frames (4 s), then the last pose holds
   /* Pose picker. busy: pen alternates every 2 frames, slow torso bob. idle: 20 s cycle (80 frames at 4/s):
-   * rest, glance to the window, rest, think, rest; 4 s breathing bob. still: fixed 'rest'. */
-  function poseFor(state, frame) {
+   * rest, glance to the window, rest, think, rest; 4 s breathing bob. still: fixed 'rest'.
+   * lookup(since): up1 for 2 frames, then up2. wrapup(since): WRAP table, then 'relax' held (no bob).
+   * doze: 40-frame loop, steps change every 9-12 frames. cup:'lift' while the cup is in the hand, 'near' while it is slid toward the sitter for the reach (shorter arm), else 'rest'; busy adds dx (hand travel on the page). */
+  function poseFor(state, frame, since) {
+    since = since > 0 ? Math.floor(since) : 0;
     if (state === 'still') return { name: 'rest', bob: 0 };
-    if (state === 'busy') { const p = (frame >> 1) & 1; return { name: p ? 'write-b' : 'write-a', bob: (frame >> 3) & 1 }; }
+    if (state === 'busy') { const p = (frame >> 1) & 1; return { name: p ? 'write-b' : 'write-a', bob: (frame >> 3) & 1, dx: [0, 1, 2, 3, 3, 2, 1, 0][frame & 7] }; }
+    if (state === 'lookup') return { name: since < 2 ? 'up1' : 'up2', bob: 0 };
+    if (state === 'wrapup') { const n = since < WRAP_LEN - 1 ? WRAP[since] : 'relax'; return { name: n, bob: 0, cup: since >= 6 && since <= 11 ? 'lift' : since === 4 || since === 5 || since === 12 || since === 13 ? 'near' : 'rest' }; }
+    if (state === 'doze') { const f = ((frame % 40) + 40) % 40; return { name: f < 10 ? 'dz0' : f < 19 ? 'dz1' : f < 31 ? 'dz2' : 'dz1', bob: (frame >> 4) & 1, f: f }; }
     const f = ((frame % 80) + 80) % 80;
     const name = f < 32 ? 'rest' : f < 44 ? 'glance' : f < 60 ? 'rest' : f < 72 ? 'think' : 'rest';
     return { name: name, bob: (frame >> 4) & 1 };
   }
+  // o.state -> one of STATES. Missing state keeps the original default (busy); anything unknown is idle.
+  const stateOf = o => (o.state === undefined ? 'busy' : STATES.indexOf(o.state) < 0 ? 'idle' : o.state);
+  const sinceOf = o => (o.since > 0 ? Math.floor(o.since) : 0);
+  // notebook: 0 open, 1 closed (pen still in hand), 2 closed with the pen on top
+  const bookOf = (st, since) => (st === 'doze' || st === 'sleep' ? 2 : st === 'wrapup' ? (since < 1 ? 0 : since < 2 ? 1 : 2) : 0);
 
   const painter = ctx => (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); };
   const eff = (state, frame) => (state === 'still' ? 0 : frame);
 
+  /* ---- passers-by: pure function of (hour, frame). One walker may start per 24-frame slot; each crossing lasts
+   * 24..35 frames (6-9 s) and starts at most 8 frames into its slot, so at most 2 overlap. ---- */
+  const SLOT = 24;
+  const density = h => { h = wrapHour(h); return h >= 1 && h < 5.5 ? 0 : h < 7 ? 0.12 : h < 19 ? 0.5 : h < 23 ? 0.25 : 0.08; };
+  function passersAt(hour, frame) {
+    const out = [], p = density(hour), s0 = Math.floor(frame / SLOT);
+    for (let s = s0 - 1; s <= s0; s++) {
+      if (s < 0 || hash(s * 7.31 + 0.5) >= p) continue;
+      const start = s * SLOT + Math.floor(hash(s * 3.7 + 1.1) * 9), dur = 24 + Math.floor(hash(s * 5.3 + 2.2) * 12), t = frame - start;
+      if (t < 0 || t >= dur) continue;
+      out.push({ u: t / dur, t: t, dir: hash(s * 9.9 + 3.3) < 0.5 ? -1 : 1, kind: Math.floor(hash(s * 1.7 + 4.4) * 5), tone: Math.floor(hash(s * 2.9 + 5.5) * 4) });
+    }
+    return out;
+  }
+  const COATS = [[70, 52, 78], [44, 82, 80], [128, 74, 52], [48, 60, 104]];
+  function drawPassers(R, wx, hour, frame, night) {
+    const Rc = (x, y, w, h, c) => { const x0 = Math.max(x, wx - 33), x1 = Math.min(x + w, wx + 34); if (x1 > x0) R(x0, y, x1 - x0, h, c); };   // stay inside the glass
+    const sh = c => rgb(lerp(c, [176, 170, 214], night * 0.55));   // night: lighter cool lavender body (distinct from the amber windows) with an amber lamp edge
+    for (const w of passersAt(hour, frame)) {
+      const x = Math.round(w.dir > 0 ? wx - 38 + w.u * 76 : wx + 34 - w.u * 76), ph = [0, 1, 2, 1][w.t & 3], coat = sh(COATS[w.tone]), dark = sh([50, 46, 60]), skin = sh([200, 160, 130]);
+      const tall = w.kind === 4 ? 1 : 0, top = 82 - tall;                                                // feet end at y 88, on the pavement strip
+      Rc(x + (ph === 1 ? 1 : ph === 0 ? 0 : 1), 87, ph === 1 ? 2 : 1, 2, dark); if (ph !== 1) Rc(x + (ph === 0 ? 2 : 3), 87, 1, 2, dark);   // legs: apart / together / apart
+      Rc(x, top + 2, 4, 5 + tall, coat); Rc(x + 1, top, 2, 2, skin);                              // coat, head
+      if (w.kind === 2) Rc(x, top - 1, 4, 1, dark);                                                      // hat
+      if (w.kind === 1) { const uc = sh([170, 56, 56]); Rc(x - 2, top - 2, 8, 1, uc); Rc(x - 1, top - 3, 6, 1, uc); Rc(x, top - 4, 4, 1, uc); Rc(x + 2, top - 1, 1, 3, dark); }   // umbrella
+      if (w.kind === 3) Rc(x + (w.dir > 0 ? 3 : -1), top + 3, 1, 3, sh([120, 90, 50]));                  // bag
+      if (night > 0.3) Rc(x + (w.dir > 0 ? 3 : 0), top, 1, 6 + tall, 'rgb(255,208,120)');                        // lamplit edge
+    }
+  }
+
   function drawRoom(ctx, W, hour, frame, o) {
-    frame = eff(o.state, frame); hour = wrapHour(hour);
+    const st = stateOf(o), since = sinceOf(o); frame = eff(st, frame); hour = wrapHour(hour);
+    const cs = poseFor(st, frame, since).cup, lift = cs === 'lift', near = cs === 'near';          // lift: cup is in the hand (wrapup sip); near: slid toward the sitter, off the saucer
     const H = SH, d = day(hour), night = 1 - d, wx = o.wx, tx = o.tx, R = painter(ctx);
     for (let x = 0; x < W; x++) R(x, 0, 1, 88, (x % 8 < 4) ? '#86654e' : '#7f5f49');          // plaster, faint paper stripes
     R(0, 88, W, 2, '#c9a36a'); R(0, 90, W, 12, '#4a2c20');                                      // rail + wainscot
@@ -91,44 +156,99 @@ const K=(()=>{const window={};
       }
       R(x, y, 1, 1, rgb(c));
     }
+    if (o.passers !== false && st !== 'still') {                                                // pavement strip + passers-by, then the centre muntin back on top
+      R(wx - 33, 88, 67, 3, rgb(lerp([150, 146, 154], [26, 26, 44], night * 0.9)));
+      drawPassers(R, wx, hour, frame, night);
+      R(wx, 78, 1, 13, '#2a1a14');
+    }
     R(wx - 40, 92, 80, 4, '#d2b685'); R(wx - 40, 96, 80, 1, '#8c6c40');                          // sill
     for (const s of [-1, 1]) for (let i = 0; i < 14; i++) { const x = s < 0 ? wx - 50 + i : wx + 37 + i; R(x, 12, 1, 78, (i % 4 < 2) ? '#7a2431' : '#5e1a26'); }
     R(wx - 54, 10, 108, 2, '#b08a3c'); R(wx - 54, 8, 2, 6, '#b08a3c'); R(wx + 52, 8, 2, 6, '#b08a3c');
     const lx = tx; R(lx, 0, 1, 80, '#2a1a14'); R(lx - 8, 80, 17, 3, '#b08a3c'); R(lx - 6, 77, 13, 3, '#caa04a');   // pendant lamp
-    if (night > 0.2) { ctx.fillStyle = 'rgba(255,200,110,' + (0.22 * night) + ')'; ctx.beginPath(); ctx.moveTo(lx - 6, 83); ctx.lineTo(lx + 7, 83); ctx.lineTo(lx + 34, 118); ctx.lineTo(lx - 33, 118); ctx.fill(); }
+    if (night > 0.2) { ctx.fillStyle = 'rgba(255,200,110,' + (0.34 * night) + ')'; ctx.beginPath(); ctx.moveTo(lx - 6, 83); ctx.lineTo(lx + 7, 83); ctx.lineTo(lx + 38, 124); ctx.lineTo(lx - 38, 124); ctx.fill();
+      ctx.fillStyle = 'rgba(255,214,140,' + (0.16 * night) + ')'; ctx.beginPath(); ctx.moveTo(lx - 3, 83); ctx.lineTo(lx + 4, 83); ctx.lineTo(lx + 20, 112); ctx.lineTo(lx - 19, 112); ctx.fill(); }   // warm cone + brighter core
     R(lx - 3, 83, 7, 1, night > 0.2 ? '#ffe3a0' : '#e8d9a8');
     if (d > 0.15) { ctx.fillStyle = 'rgba(255,236,170,' + (0.10 * d) + ')'; ctx.beginPath(); ctx.moveTo(wx - 34, 92); ctx.lineTo(wx + 34, 92); ctx.lineTo(wx + 86, H); ctx.lineTo(wx - 8, H); ctx.fill(); }
     const px = tx + 46; R(px, 34, 22, 28, '#b08a3c'); R(px + 2, 36, 18, 24, '#d9c9a3'); R(px + 5, 48, 12, 9, '#6f7f6a'); R(px + 8, 41, 6, 6, '#a8543c');   // framed picture
     R(tx - 24, 108, 49, 1, '#efe6d2'); R(tx - 22, 109, 45, 1, '#cfc3aa'); R(tx - 18, 110, 37, 1, '#9b8e78');                                           // marble top
     R(tx - 2, 111, 5, 19, '#3b2218'); R(tx - 9, 130, 19, 2, '#2a1810'); R(tx - 12, 132, 25, 1, '#2a1810');
-    R(tx + 2, 106, 9, 2, '#f4efe6'); R(tx + 4, 102, 5, 4, '#f4efe6'); R(tx + 4, 102, 5, 1, '#4a2a18'); R(tx + 9, 103, 2, 2, '#f4efe6');                // cup + saucer
-    const st = (frame >> 2) & 3; R(tx + 5 + (st & 1), 98 - (st >> 1), 1, 3, 'rgba(255,255,255,.5)');                                                     // steam (one fixed wisp when still)
+    R(tx + 2, 106, 9, 2, '#f4efe6');                                                                                                          // saucer
+    if (near) { R(tx - 4, 104, 5, 4, '#f4efe6'); R(tx - 4, 104, 5, 1, '#4a2a18'); R(tx + 1, 105, 2, 2, '#f4efe6'); }
+    else if (!lift) { R(tx + 4, 102, 5, 4, '#f4efe6'); R(tx + 4, 102, 5, 1, '#4a2a18'); R(tx + 9, 103, 2, 2, '#f4efe6'); }                          // cup
+    const sf = (frame >> 2) & 3; if (!lift && !near) R(tx + 5 + (sf & 1), 98 - (sf >> 1), 1, 3, 'rgba(255,255,255,.5)');                                                     // steam (one fixed wisp when still)
     R(tx + 13, 104, 9, 4, '#f1d9a0'); R(tx + 13, 104, 9, 1, '#6a3a22'); R(tx + 13, 106, 9, 1, '#a0522d');                                                // cake
-    R(tx - 16, 105, 12, 3, '#e6dcc4'); R(tx - 16, 105, 12, 1, '#a0432f');                                                                                // notebook
+    const bk = bookOf(st, since);                                                                                                               // notebook: open page, or closed cover (+ pen on top)
+    if (bk === 0) { R(tx - 16, 105, 12, 3, '#e6dcc4'); R(tx - 16, 105, 12, 1, '#a0432f'); }
+    else { R(tx - 16, 105, 12, 3, '#a0432f'); R(tx - 16, 105, 2, 3, '#6e2c1f'); R(tx - 16, 107, 12, 1, '#7d3224'); R(tx - 8, 105, 1, 3, '#3b2218');
+      if (bk === 2) { R(tx - 13, 104, 7, 1, '#c0392b'); R(tx - 6, 104, 1, 1, '#14100e'); } }
+  }
+
+  // 3x3 'z'
+  const zed = (R, x, y, c) => { R(x, y, 5, 1, c); R(x + 3, y + 1, 1, 1, c); R(x + 2, y + 2, 1, 1, c); R(x + 1, y + 3, 1, 1, c); R(x, y + 4, 5, 1, c); };
+  const mug = (R, x, y) => { R(x, y, 5, 4, '#f4efe6'); R(x, y, 5, 1, '#4a2a18'); R(x + 5, y + 1, 1, 2, '#f4efe6'); };
+
+  // sleep: chair stays empty; figure lies on the floor in open space right of the chair's front leg, in front of the table base:
+  // pillow, head lying on it (hair at the pillow end, face up, closed eye), bag continuing from the shoulders, z's drifting up-left into the gap under the table
+  function drawSleeper(R, tx, frame) {
+    const bx = tx - 21, br = (frame >> 3) & 1, B = (x, y, w, h, c) => R(x, y + 1, w, h, c);   // B: body one row lower, clear of the table foot
+    B(bx - 1, 138, 14, 5, '#efe6d2'); B(bx, 137, 12, 1, '#efe6d2'); B(bx - 1, 142, 14, 1, '#cfc3aa');           // pillow
+    B(bx + 1, 134, 5, 4, '#2a1a14'); B(bx + 2, 133, 4, 1, '#2a1a14');                                           // hair at the pillow end
+    B(bx + 5, 134, 6, 4, '#e5b894'); B(bx + 6, 133, 4, 1, '#e5b894');                                           // face up, lying flat on the pillow
+    B(bx + 7, 135, 3, 1, '#14100e'); B(bx + 8, 137, 2, 1, '#c98f6b');                                           // closed eye line, mouth
+    for (let i = 0; i < 31; i++) { const x = bx + 11 + i, t = 134 + (i >> 3) + (i < 12 ? -br : 0), e = i === 30 ? 1 : 0;   // bag: shoulders high, sloping to the feet
+      if (e) { B(x, t + 1, 1, 141 - t, '#2f7f86'); continue; }
+      B(x, t, 1, 142 - t, '#2f7f86'); B(x, t, 1, 1, '#4aa0a7'); if (i % 8 === 5) B(x, t + 2, 1, 140 - t, '#27696f'); }
+    B(bx + 11, 142, 31, 1, '#235f65');                                                                           // shaded underside
+    B(bx + 11, 134 - br, 3, 8 + br, '#58aab0');                                                                  // folded collar at the shoulders
+    for (let i = 0; i < 2; i++) { const ph = (frame + 20 * i) % 40; if (ph >= 36) continue;               // z's: up and LEFT into the open floor under the table; x >= bx-1 stays clear of the chair seat (ends bx-3), ph<36 keeps y >= 116 (table underside is 111)
+      const zx = bx + 6 - Math.floor(ph / 5), zy = 127 - Math.floor(ph / 3), c = 'rgba(244,248,255,' + (ph < 24 ? 1 : 0.55) + ')';
+      if (ph < 12) { R(zx, zy + 1, 3, 1, c); R(zx + 1, zy + 2, 1, 1, c); R(zx, zy + 3, 3, 1, c); } else zed(R, zx, zy, c); }   // small z first, grows
   }
 
   function drawCharacter(ctx, W, hour, frame, o) {
-    frame = eff(o.state, frame);
-    const tx = o.tx, R = painter(ctx), ps = poseFor(o.state || 'busy', frame), P = POSES[ps.name], bob = ps.bob, cx = tx - 33;
+    const st = stateOf(o), since = sinceOf(o); frame = eff(st, frame);
+    const tx = o.tx, R = painter(ctx), cx = tx - 33;
     R(cx - 9, 92, 3, 34, '#3b2218'); R(cx - 9, 92, 10, 2, '#3b2218'); R(cx - 9, 121, 19, 3, '#4a2c20'); R(cx - 9, 124, 2, 12, '#2a1810'); R(cx + 8, 124, 2, 12, '#2a1810');   // chair
-    R(cx - 4, 99 + bob, 9, 21 - bob, '#2f7f86'); R(cx - 4, 99 + bob, 9, 2, '#a0432f'); R(cx - 1, 101 + bob, 3, 5, '#a0432f');                                            // sweater + scarf
-    R(cx - 3, 89 + bob, 8, 9, '#e5b894'); R(cx - 4, 88 + bob, 10, 3, '#2a1a14'); R(cx - 4, 90 + bob, 2, 6, '#2a1a14');                                                    // head + hair
-    R(cx + P.eye, 93 + bob, 2, 2, '#14100e'); R(cx + 3 + P.eye, 93 + bob, 2, 2, '#14100e'); R(cx + 2 + P.eye, 94 + bob, 1, 1, '#14100e');                                // round glasses
-    R(cx - 4, 119, 17, 4, '#3a3550'); R(cx + 10, 119, 3, 8, '#3a3550'); R(cx + 10, 127, 5, 2, '#1c1410');                                                                // legs
-    if (P.hand === 'chin') { R(cx + 4, 103 + bob, 5, 3, '#2f7f86'); R(cx + 7, 97 + bob, 3, 7, '#2f7f86'); R(cx + 7, 95 + bob, 3, 3, '#e5b894'); R(cx + 9, 93 + bob, 1, 3, '#c0392b'); }
-    else { R(cx + 4, 107 + bob, 13, 3, '#2f7f86'); R(cx + 16, 106 + bob + P.pen, 3, 3, '#e5b894'); R(cx + 18, 105 + bob + P.pen, 1, 3, '#c0392b'); }                     // arm, hand, pen
+    if (st === 'sleep') { drawSleeper(R, tx, frame); return; }
+    const ps = poseFor(st, frame, since), P = POSES[ps.name], bob = ps.bob, L = P.lean || 0, hx = -L + (P.hx || 0), hy = bob + (P.hy || 0), ey = (P.ey || 0) - (P.back || 0), eye = P.eye || 0;
+    const sw = '#2f7f86', sd = '#27696f', sk = '#e5b894', dk = '#14100e', gold = '#b08a3c', h = P.hand, pen = P.pen || 0, dx = ps.dx || 0, X = cx - L;   // X: torso back edge; arms hang from X+5
+    const m = L - Math.trunc(L / 2);                                                                           // torso sheared in 3 bands so a lean reads as a slope: shoulders back most, hips stay
+    R(X - 4, 99 + bob, 9, 6 - bob, sw); R(X - 4 + m, 105, 9, 7, sw); R(cx - 4, 112, 9, 8, sw); R(X - 4, 99 + bob, 9, 2, '#a0432f'); R(X - 1, 101 + bob, 3, 5, '#a0432f');   // sweater + scarf
+    // legs: seated, or (relax) thighs and shins extended forward under the table
+    if (P.ext) { R(X - 4, 119, 19, 3, '#3a3550'); R(cx + 12, 121, 5, 3, '#3a3550'); R(cx + 16, 124, 5, 3, '#3a3550'); R(cx + 19, 127, 6, 2, '#1c1410'); }   // thigh forward, shin slopes down to the floor
+    else { R(cx - 4, 119, 17, 4, '#3a3550'); R(cx + 10, 119, 3, 8, '#3a3550'); R(cx + 10, 127, 5, 2, '#1c1410'); }
+    // head sits directly on the shoulders (no neck strip): skin, hair
+    R(X - 1, 98 + bob, 3, 1, sk);                                                                         // 1 px of neck so no gap shows between chin and collar
+    const hh = 3 + (P.tilt || 0) - (P.back || 0);
+    R(cx - 3 + hx, 89 + hy, 8, 9, sk); R(cx - 4 + hx, 88 + hy, 10, hh, '#2a1a14'); R(cx - 4 + hx, 90 + hy, 2, 6, '#2a1a14');
+    if (P.back) R(cx + 5 + hx, 94 + hy, 1, 2, sk);                                                         // chin/nose lifted: head tipped back
+    // round glasses: two lenses with a 1 px skin gap, dark bridge on the top row (lower row stays skin) and a gold temple, a glint on each lens
+    const gx = cx + eye + hx, gy = 93 + hy + ey;
+    if (P.closed) { for (const o2 of [0, 3]) { R(gx + o2, gy, 2, 1, gold); R(gx + o2, gy + 1, 2, 1, dk); R(gx + o2, gy + 2, 2, 1, gold); } }   // shut: lids inside gold lens rims, skin between the lenses
+    else { R(gx, gy, 2, 2, dk); R(gx + 3, gy, 2, 2, dk); R(gx, gy, 1, 1, '#5a7088'); R(gx + 3, gy, 1, 1, '#5a7088'); }
+    R(gx + 2, gy, 1, 1, dk); R(gx - 1, gy, 1, 1, gold);   // bridge on the top row, temple
+    // arms: upper arm hangs from the shoulder (darker edge), forearm leaves the elbow; hand + pen/cup
+    const upper = (y, n) => { R(X + 2, y, 4, n, sw); R(X + 2, y, 1, n, sd); };
+    if (h === 'chin') { R(cx + 4, 103 + bob, 5, 3, sw); R(cx + 7, 97 + bob, 3, 7, sw); R(cx + 7, 95 + bob, 3, 3, sk); R(cx + 9, 93 + bob, 1, 3, '#c0392b'); }
+    else if (h === 'page') { upper(101 + bob, 7); R(X + 4, 107 + bob, 9 + L + dx, 3, sw); R(cx + 12 + dx, 107 + bob + Math.min(0, pen + 1), 5, 3, sw); R(cx + 16 + dx, 106 + bob + pen, 3, 3, sk); R(cx + 18 + dx, 105 + bob + pen, 1, 3, '#c0392b'); R(cx + 18 + dx, 108 + bob + pen, 1, 1, dk); }   // pen tip
+    else if (h === 'flat') { upper(101, 7); R(X + 4, 107, 12 + L, 3, sw); R(cx + 16, 106, 3, 3, sk); }                         // hand rests on the notebook
+    else if (h === 'reach') { upper(101, 7); R(X + 4, 107, 11, 3, sw); R(cx + 14, 106, 8, 3, sw); R(cx + 21, 105, 6, 3, sw); R(cx + 26, 105, 3, 3, sk); }   // stepped forearm to the slid-over cup
+    else if (h === 'carry') { upper(101, 6); R(X + 4, 105, 9 + L, 3, sw); R(cx + 12, 103, 3, 3, sk); mug(R, cx + 11, 99); }                  // cup carried up
+    else if (h === 'sip') { upper(101, 6); R(X + 4, 104, 6, 3, sw); R(X + 7, 101, 3, 5, sw); R(X + 7, 98, 3, 3, sk); mug(R, X + 6, 94); }   // forearm folds up, cup at the mouth
+    else if (h === 'cross') { R(X - 2 + m, 105, 8, 3, sd); R(X - 2 + m, 105, 8, 1, '#4aa0a7'); R(X + 6 + m, 106, 2, 2, sk); }   // arms folded over the chest, hand tucked
+    if (st === 'doze' && ps.name === 'dz2') { const t = ((ps.f - 19) >> 1) * 2; zed(R, cx + 3 + hx, 85 - t, 'rgba(244,248,255,' + (t < 8 ? 1 : 0.55) + ')'); if (t >= 6) zed(R, cx + 9 + hx, 92 - t, 'rgba(244,248,255,.7)'); }   // z spawns just above the head, rises ~10 px
   }
 
   function drawTint(ctx, W, hour) {
     hour = wrapHour(hour);
     const night = 1 - day(hour);
-    ctx.fillStyle = 'rgba(12,18,60,' + (0.5 * night) + ')'; ctx.fillRect(0, 0, W, SH);
+    ctx.fillStyle = 'rgba(12,18,60,' + (0.36 * night) + ')'; ctx.fillRect(0, 0, W, SH);
     const dusk = smooth(16, 18, hour) * (1 - smooth(19, 20.5, hour)) + smooth(5, 6.5, hour) * (1 - smooth(7, 8.5, hour));
     ctx.fillStyle = 'rgba(255,140,60,' + (0.16 * dusk) + ')'; ctx.fillRect(0, 0, W, SH);
   }
   function draw(ctx, W, hour, frame, o) { drawRoom(ctx, W, hour, frame, o); drawCharacter(ctx, W, hour, frame, o); drawTint(ctx, W, hour); }
 
-  const api = { SH, ART_L, ART_R, POSES, poseFor, hourOf, wrapHour, skyAt, day, drawRoom, drawCharacter, drawTint, draw };
+  const api = { STATES, passersAt, SH, ART_L, ART_R, POSES, poseFor, hourOf, wrapHour, skyAt, day, drawRoom, drawCharacter, drawTint, draw };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Kaffeehaus = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -184,8 +304,9 @@ const checkLook = look => {
 // Pure local state; scheduler supplied by the SDK adapter, never content or RPC.
 function createController({ now, every, draw, onState = () => {} }) {
   let disposed = false;
-  let state = { clock: null, motion: false, overrideHour: null,
-    mode: 'focus', width: 780, motionRequested: false, reduced: false,
+  // Motion is on by default: the note-taker is half the point. OS reduced motion still wins.
+  let state = { clock: null, motion: true, overrideHour: null,
+    mode: 'focus', width: 780, motionRequested: true, reduced: false,
     looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } } };
   const sample = () => {
     if (disposed) return;
@@ -245,14 +366,14 @@ const THEMES = {
     title: 'Die Karte', sub: 'café settings', head: 'font:600 11px/1 -apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8a6a45;margin:14px 0 7px',
     btn: 'flex:1;padding:6px 8px;border:1px solid #b59a73;background:transparent;border-radius:3px;color:#2a211b;font:inherit;cursor:pointer',
     on: 'background:#2a211b;color:#f2e9d6;border-color:#2a211b', muted: '#7a6650', accent: '#6b4a2f',
-    sections: [['Platz', 'where you sit'], ['Uhrzeit', 'light in the room'], ['Hausmischungen', 'house blends'], ['À la carte', 'for this seat']],
-    seats: [['window', 'Fensterplatz'], ['focus', 'Fokus'], ['classic', 'Klassisch']], follow: 'Jetzt', reset: 'Zurücksetzen · reset this seat', german: true },
-  glass: { panel: 'background:rgba(22,26,36,.82);color:#eef0f4;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px 12px;box-shadow:0 20px 44px rgba(0,0,0,.45);font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;width:340px;backdrop-filter:blur(26px) saturate(1.5)',
+    sections: [['Platz', 'where you sit'], ['Uhrzeit', 'light in the room'], ['Hausmischungen', 'house blends'], ['À la carte', 'for this seat'], ['Im Raum', 'the room']],
+    seats: [['window', 'Fensterplatz'], ['focus', 'Fokus'], ['classic', 'Klassisch']], follow: 'Jetzt', reset: 'Zurücksetzen · reset this seat', width: ['Lesebreite', 'reading width'], motion: ['Bewegung', 'Stillleben'], peek: 'Nur der Raum · peek', german: true },
+  glass: { panel: 'background:rgba(22,26,36,.94);color:#eef0f4;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px 12px;box-shadow:0 20px 44px rgba(0,0,0,.45);font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;width:340px;backdrop-filter:blur(26px) saturate(1.5)',
     title: 'Café', sub: 'scene settings', head: 'font:600 10.5px/1 -apple-system,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,240,244,.68);margin:12px 0 7px',
     btn: 'flex:1;padding:6px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);border-radius:8px;color:#eef0f4;font:inherit;cursor:pointer',
     on: 'background:rgba(201,163,106,.28);border-color:rgba(201,163,106,.7)', muted: 'rgba(238,240,244,.6)', accent: '#c9a36a',
-    sections: [['Seat', ''], ['Light', ''], ['House blends', ''], ['Look · this seat', '']],
-    seats: [['window', 'Window Seat'], ['focus', 'Focus'], ['classic', 'Classic']], follow: 'Follow clock', reset: 'Reset this seat', german: false } };
+    sections: [['Seat', ''], ['Light', ''], ['House blends', ''], ['Look · this seat', ''], ['Room', '']],
+    seats: [['window', 'Window Seat'], ['focus', 'Focus'], ['classic', 'Classic']], follow: 'Follow clock', reset: 'Reset this seat', width: ['Reading width', ''], motion: ['Motion on', 'Motion off'], peek: 'Peek at the room', german: false } };
 
 const blendOf = looks => {
   const same = (a, b) => Object.keys(LOOK_RANGES).every(k => a[k] === b[k]);
@@ -262,25 +383,25 @@ const blendOf = looks => {
 const fmtHour = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
 const partOfDay = h => h < 5 ? 'night' : h < 8 ? 'dawn' : h < 17 ? 'day' : h < 20.5 ? 'dusk' : 'night';
 
-function createOverlay({ root, listen, update }) {
+function createOverlay({ root, listen, update, peek = () => {}, reduced = () => false }) {
   const el = (tag, css, text) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text != null) n.textContent = text; return n; };
 
   // Triggers
   const board = el('button', 'position:absolute;z-index:40;width:180px;padding:11px 14px;text-align:left;background:#26282a;border:0;border-radius:0;box-shadow:0 0 0 3px #4a2c20,0 0 0 6px #6b4a2f,0 12px 22px rgba(0,0,0,.45);color:#ecebe4;cursor:pointer;display:none');
-  board.type = 'button'; board.dataset.kaffeehausUi = 'board'; board.setAttribute('aria-haspopup', 'dialog'); board.setAttribute('aria-expanded', 'false');
+  board.type = 'button'; board.dataset.kaffeehausUi = 'board'; board.setAttribute('aria-controls', 'kaffeehaus-paper'); board.setAttribute('aria-haspopup', 'dialog'); board.setAttribute('aria-expanded', 'false');
   const bTitle = el('div', 'font:italic 600 19px/1.1 "Snell Roundhand","Apple Chancery","Bradley Hand",cursive;color:#f4f1e6', 'Die Karte');
   const bBlend = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#c9a36a;margin-top:6px');
   const bTime = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#d8d6cc');
   const bHint = el('div', 'font:11.5px/1.3 "Chalkboard",sans-serif;color:#c9c6ba;margin-top:6px', 'click to adjust ›');
   board.append(bTitle, bBlend, bTime, bHint);
   const pill = el('button', 'position:absolute;z-index:40;left:16px;top:14px;height:32px;padding:0 12px;border-radius:999px;font:12.5px/1 -apple-system,sans-serif;color:#eef0f4;background:rgba(28,32,44,.5);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(18px) saturate(1.4);box-shadow:0 6px 18px rgba(0,0,0,.28);cursor:pointer;display:none;white-space:nowrap');
-  pill.type = 'button'; pill.dataset.kaffeehausUi = 'pill'; pill.setAttribute('aria-haspopup', 'dialog'); pill.setAttribute('aria-expanded', 'false');
+  pill.type = 'button'; pill.dataset.kaffeehausUi = 'pill'; pill.setAttribute('aria-controls', 'kaffeehaus-glass'); pill.setAttribute('aria-haspopup', 'dialog'); pill.setAttribute('aria-expanded', 'false');
 
   // One panel per theme, built once.
   const panels = {};
   for (const [name, T] of Object.entries(THEMES)) {
     const panel = el('div', `position:absolute;z-index:41;overflow:auto;display:none;${T.panel}`);
-    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Café scene settings'); panel.dataset.kaffeehausUi = 'panel-' + name;
+    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Café scene settings'); panel.id = 'kaffeehaus-' + name; panel.dataset.kaffeehausUi = 'panel-' + name;
     const top = el('div', `display:flex;align-items:baseline;gap:8px;${T.german ? 'border-bottom:3px double #8a6a45;padding-bottom:8px' : ''}`);
     const close = el('button', `margin-left:auto;background:none;border:0;font-size:20px;line-height:1;color:${T.muted};cursor:pointer`, '×');
     close.type = 'button'; close.setAttribute('aria-label', 'Close');
@@ -314,30 +435,54 @@ function createOverlay({ root, listen, update }) {
       listen(input, 'input', () => update({ look: { [key]: Number(input.value) } }));
       lab.append(line, input); panel.append(lab); looks[key] = { input, out, unit };
     }
+    head(4);
+    const wLab = el('label', 'display:block;margin-bottom:4px'), wLine = el('span', 'display:flex;gap:6px;align-items:baseline');
+    wLine.append(el('span', '', T.width[0])); if (T.width[1]) wLine.append(el('i', `font-size:12px;color:${T.muted}`, T.width[1]));
+    wLine.append(el('span', `flex:1;${T.german ? 'border-bottom:1px dotted #a58b67;transform:translateY(-4px)' : ''}`));
+    const widthOut = el('span', `font-variant-numeric:tabular-nums;color:${T.muted}`); wLine.append(widthOut);
+    const width = range([360, 1000], 10, 'Reading width'); listen(width, 'input', () => update({ width: Number(width.value) }));
+    wLab.append(wLine, width); panel.append(wLab);
+    const roomRow = row(); roomRow.style.marginTop = '8px';
+    const motion = button(roomRow, T.motion[0], () => last && update({ motionRequested: !last.state.motionRequested }));
+    const peekBtn = button(roomRow, T.peek, () => { setOpen(false, false); peek(); });
     const foot = el('div', `display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid ${T.german ? '#d7c6a6' : 'rgba(255,255,255,.1)'};font-size:12px;color:${T.muted}`);
     const blendName = el('span'); const reset = el('button', `background:none;border:0;color:${T.accent};text-decoration:underline;cursor:pointer;font:inherit`, T.reset); reset.type = 'button';
     foot.append(blendName, reset); panel.append(foot);
     const roomOnly = [...panel.children].slice(roomFrom);
-    panels[name] = { panel, close, reset, seats, hour, hourOut, follow, blends, looks, blendName, T, classicNote, roomOnly };
+    panels[name] = { panel, close, reset, seats, hour, hourOut, follow, blends, looks, blendName, T, classicNote, roomOnly, width, widthOut, motion, peekBtn };
   }
   root.append(board, pill, panels.paper.panel, panels.glass.panel);
 
   let open = false, variant = null, last = null;
   const trigger = () => variant === 'board' ? board : pill;
   const current = () => panels[variant === 'board' ? 'paper' : 'glass'];
-  const setOpen = value => {
+  const setOpen = (value, refocus = true) => {
     if (open === value) return; open = value;
     for (const p of Object.values(panels)) p.panel.style.display = 'none';
     trigger().setAttribute('aria-expanded', String(open));
-    if (open) { current().panel.style.display = 'block'; place(); current().seats.find(b => b.dataset.mode === last?.state.mode)?.focus({ preventScroll: true }); }
-    else trigger().focus({ preventScroll: true });
+    if (open) {
+      const p = current().panel; p.style.display = 'block'; place();
+      if (!reduced()) { // a short fade from the board/pill
+        p.style.transition = 'none'; p.style.opacity = '0'; p.style.transform = 'translateY(-4px) scale(.985)'; void p.offsetWidth;
+        p.style.transition = 'opacity 160ms ease, transform 160ms ease'; p.style.opacity = '1'; p.style.transform = 'none';
+      }
+      current().seats.find(b => b.dataset.mode === last?.state.mode)?.focus({ preventScroll: true });
+    } else if (refocus) trigger().focus({ preventScroll: true });
   };
   listen(board, 'click', () => setOpen(!open)); listen(pill, 'click', () => setOpen(!open));
   for (const p of Object.values(panels)) {
     listen(p.close, 'click', () => setOpen(false));
     listen(p.reset, 'click', () => last && update({ look: { ...DEFAULT_LOOKS[last.state.mode] } }));
   }
-  listen(document, 'keydown', e => { if (open && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); setOpen(false); } });
+  listen(document, 'keydown', e => {
+    if (!open || e.defaultPrevented) return;
+    if (e.key === 'Escape') { e.preventDefault(); setOpen(false); return; }
+    if (e.key !== 'Tab') return; // keep keyboard focus inside the open card
+    const items = [...current().panel.querySelectorAll('button,input')].filter(n => n.offsetParent !== null);
+    if (!items.length) return;
+    const i = items.indexOf(document.activeElement), next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i === items.length - 1 ? 0 : i + 1);
+    e.preventDefault(); items[next].focus({ preventScroll: true });
+  });
 
   function place() {
     if (!last) return;
@@ -385,6 +530,9 @@ function createOverlay({ root, listen, update }) {
       const L = state.looks[classic ? 'focus' : state.mode];
       for (const [key] of LOOK_ROWS) { const s = p.looks[key], v = String(L[key]); if (s.input.value !== v && document.activeElement !== s.input) s.input.value = v; s.out.textContent = v + s.unit; }
       p.blendName.textContent = 'Blend: ' + name;
+      if (document.activeElement !== p.width) p.width.value = String(state.width); p.widthOut.textContent = state.width + ' px';
+      p.motion.textContent = state.motion ? p.T.motion[0] : p.T.motion[1]; p.motion.setAttribute('aria-pressed', String(!!state.motion));
+      p.motion.disabled = !!state.reduced; p.motion.title = state.reduced ? 'macOS Reduce motion is on' : '';
     }
     place();
   }
@@ -392,9 +540,54 @@ function createOverlay({ root, listen, update }) {
   return { render, dispose };
 }
 
+// The note-taker's state machine. Inputs are content-free: two booleans from the
+// public Desktop SDK (Hermes is working / still waiting for the first words), the
+// local hour, and whether motion is allowed. It never sees what anyone wrote.
+// One step per animation frame (about 4 per second).
+const CHARACTER = Object.freeze({
+  lookup: 10,        // frames looking up when the first words arrive (2.5 s)
+  wrapup: 16,        // closing the notebook and a sip (4 s)
+  rest: 40,          // holding the closed-notebook pose before idling (10 s)
+  dozeAfter: 2400,   // idle frames before dozing late at night (10 min)
+  sleepAfter: 2400,  // dozing frames before the sleeping bag comes out (10 min)
+});
+const late = h => h >= 23 || h < 5;      // dozing hours
+const veryLate = h => h >= 1 && h < 5;   // sleeping-bag hours (rare on purpose)
+
+function createCharacter(T = CHARACTER) {
+  let state = 'idle', since = 0, idle = 0, wasBusy = false, wasAwaiting = false;
+  const go = next => { if (next !== state) { state = next; since = 0; } };
+  return {
+    get: () => ({ state, since }),
+    step({ busy = false, awaiting = false, hour = 12, motion = true } = {}) {
+      since++;
+      if (busy) {
+        idle = 0;
+        if (state === 'doze' || state === 'sleep' || state === 'idle' || state === 'wrapup' || state === 'still') go('busy');
+        if (wasAwaiting && !awaiting && state === 'busy') go('lookup');   // the first words arrive
+        if (state === 'lookup' && since >= T.lookup) go('busy');
+      } else {
+        if (wasBusy) go('wrapup');                                        // the turn ended
+        else if (state === 'busy' || state === 'lookup') go('idle');
+        if (state === 'wrapup' && since >= T.wrapup + T.rest) go('idle');
+        if (state === 'idle' || state === 'still') idle++;
+        if (state === 'idle' && late(hour) && idle >= T.dozeAfter) go('doze');
+        if (state === 'doze' && veryLate(hour) && since >= T.sleepAfter) go('sleep');
+        if ((state === 'doze' || state === 'sleep') && !late(hour)) go('idle'); // morning
+      }
+      wasBusy = busy; wasAwaiting = busy && awaiting;
+      return { state: motion ? state : 'still', since: motion ? since : 0 };
+    },
+  };
+}
+
+
+const DUR = 360; // ms for seat changes; reduced motion snaps
+const ease = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
 let sceneSerial = 0;
-// All selectors below are private host hooks. No content, session ids or atoms read.
+// All selectors below are private host hooks. No content or session ids are read; the only
+// host state read is the public SDK's two booleans host.state.busy / awaitingResponse.
 function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => {}} = {}) {
   const refused = reason => ({enabled:false,reason,dispose() {}});
   if (!surface?.matches('[data-chat-surface]') || !surface.isConnected || surface.hasAttribute('data-kaffeehaus')) return refused('Unavailable or already owned chat surface');
@@ -445,17 +638,18 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
   };
   // Classic: the house palette (espresso ground, oxblood, sand, cream) and editorial type,
   // scoped to this chat surface through Hermes's own theme variables. Hermes keeps its layout.
-  const PALETTE={'--ui-text-primary':'#efe6d6','--ui-text-secondary':'#dccbb0','--ui-text-tertiary':'#bba78a','--ui-text-quaternary':'#8f7f69',
-    '--ui-accent':'#a8443c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
+  const PALETTE={'--ui-text-primary':'#efe6d6','--ui-text-secondary':'#dccbb0','--ui-text-tertiary':'#c8b394','--ui-text-quaternary':'#a8967c',
+    '--ui-accent':'#b4534a','--muted-foreground':'#cbb38c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
     '--ui-chat-bubble-background':'#2d221e','--ui-inline-code-background':'rgba(201,163,106,.13)','--ui-inline-code-foreground':'#e6c99a'};
+  const KEYS=Object.keys(PALETTE);
   const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
     left:dock.style.left,right:dock.style.right,transform:dock.style.transform,translate:dock.style.translate,font:content.style.fontFamily,pad:content.style.paddingTop,palette:{}};
-  for(const k of Object.keys(PALETTE))native.palette[k]=surface.style.getPropertyValue(k);
+  for(const k of KEYS)native.palette[k]=surface.style.getPropertyValue(k);
   const id=`kh-${++sceneSerial}`;surface.setAttribute('data-kaffeehaus',id);
   own(surface,'--composer-width','780px');own(bounds,'background-color','transparent');own(bounds,'isolation','isolate');
   for (const p of ['width','margin-left','margin-right']) own(content,p,content.style.getPropertyValue(p));
   for (const p of ['left','right','transform','translate']) own(dock,p,dock.style.getPropertyValue(p));
-  own(content,'font-family',native.font);own(content,'padding-top',native.pad);for(const k of Object.keys(PALETTE))own(surface,k,native.palette[k]);
+  own(content,'font-family',native.font);own(content,'padding-top',native.pad);for(const k of KEYS)own(surface,k,native.palette[k]);
   // Tailwind 4 uses individual translate; it composes with transform. Own both
   // mechanisms while mounted, then restore each original value and priority.
   dock.style.translate='none';
@@ -468,8 +662,45 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
   back.style.cssText='position:absolute;top:12px;right:12px;z-index:50;padding:10px 16px;color:var(--ui-text-primary);background:var(--ui-panel-background,var(--ui-chat-surface-background));border:2px solid var(--ui-stroke-secondary);border-radius:6px';
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   // In-scene controls (menu board / glass pill). Errors from bad patches are ignored, never thrown into the app.
-  const overlay=createOverlay({root:bounds,listen:(n,t,f)=>off.push(ctx.addEventListener(n,t,f)),update:patch=>{try{if(!disposed)controller.update(patch)}catch{}}});
+  const overlay=createOverlay({root:bounds,listen:(n,t,f)=>off.push(ctx.addEventListener(n,t,f)),update:patch=>{try{if(!disposed)controller.update(patch)}catch{}},
+    peek:()=>setPeek(true),reduced:()=>reduced.matches});
   let loop=null, frame=0;
+  // The note-taker follows only whether Hermes is working, never what was said.
+  const character=createCharacter(), host=sdk?.host?.state;
+  const flag=a=>{try{return !!a?.get?.()}catch{return false}};
+  let act={state:'still',since:0};
+  // Seat changes: the old picture fades out over the new one, and the chat column eases into place.
+  let shown=null, tween=null; const ghosts=new Set();
+  const fade=()=>{
+    if(reduced.matches)return;
+    const g=[];
+    if(canvas.style.display!=='none'&&canvas.width){const c=document.createElement('canvas');c.width=canvas.width;c.height=canvas.height;c.getContext('2d')?.drawImage(canvas,0,0);c.style.cssText=canvas.style.cssText;c.style.zIndex='-1';g.push(c)}
+    const v=veil.cloneNode(false);g.push(v);
+    for(const n of g){n.setAttribute('aria-hidden','true');n.style.transition=`opacity ${DUR}ms ease`;n.style.opacity='1';ghosts.add(n)}
+    veil.after(...g);void veil.offsetWidth;for(const n of g)n.style.opacity='0';
+    setTimeout(()=>{for(const n of g){n.remove();ghosts.delete(n)}},DUR+80);
+  };
+  const geo=s=>{
+    if(s.native){surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
+      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;dock.style.translate=native.translate;content.style.paddingTop='52px';return}
+    surface.style.setProperty('--composer-width',`${s.chatWidth}px`);content.style.width=`${s.chatWidth}px`;content.style.marginLeft=`${s.chatLeft}px`;content.style.marginRight='0px';
+    dock.style.left=`${s.chatLeft+s.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';dock.style.translate='none';content.style.paddingTop=native.pad;
+  };
+  const rel=()=>{const a=content.getBoundingClientRect(),b=bounds.getBoundingClientRect();return {chatLeft:a.left-b.left,chatWidth:a.width}};
+  const place=(s,animate)=>{
+    if(tween){tween.s=s;return}
+    if(!animate||reduced.matches)return geo(s);
+    const from=rel();geo(s);const to=rel();
+    if(Math.abs(from.chatLeft-to.chatLeft)<2&&Math.abs(from.chatWidth-to.chatWidth)<2)return;
+    tween={s,start:performance.now()};geo(from);
+    const step=now=>{
+      if(disposed||!tween)return;
+      const t=Math.min(1,(now-tween.start)/DUR),e=ease(t);
+      if(t>=1){const last=tween.s;tween=null;geo(last);return}
+      geo({chatLeft:from.chatLeft+(to.chatLeft-from.chatLeft)*e,chatWidth:from.chatWidth+(to.chatWidth-from.chatWidth)*e});requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
   let disposed=false,tearingDown=false, controller, peek=false, priorFocus=null, peekRestore=[];
   const setPeek=value=>{
     if(disposed||peek===value)return;
@@ -494,24 +725,23 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     const r=bounds.getBoundingClientRect();
     if(!r.width||!r.height)return;
     const classic=state.mode==='classic'&&!peek;
+    const mode=state.mode==='classic'?'focus':state.mode; // peek from Classic shows the room as Focus does
+    const g=layout({w:r.width,h:r.height,mode,width:state.width,peek});
+    const key=classic?'classic':`${mode}|${peek}|${g.wide}`, changed=shown!==null&&shown!==key;
+    if(changed)fade();
+    shown=key;
     for(const [k,v] of Object.entries(PALETTE))surface.style.setProperty(k,classic?v:native.palette[k]);
     content.style.fontFamily=classic?'"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif':native.font;
     if(classic){
-      // Hermes's own geometry; the ground is the house palette instead of the room.
-      surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
-      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;dock.style.translate=native.translate;
-      content.style.paddingTop='52px'; // room for the pill above the first message
+      // Hermes's own geometry (plus room for the pill); the ground is the house palette instead of the room.
+      place({native:true},changed);
       canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
       veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
       overlay.render(state,layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
       return;
     }
-    canvas.style.display='';dock.style.translate='none';content.style.paddingTop=native.pad;
-    const mode=state.mode==='classic'?'focus':state.mode; // peek from Classic shows the room as Focus does
-    const g=layout({w:r.width,h:r.height,mode,width:state.width,peek});
-    surface.style.setProperty('--composer-width',`${g.chatWidth}px`);
-    content.style.width=`${g.chatWidth}px`;content.style.marginLeft=`${g.chatLeft}px`;content.style.marginRight='0px';
-    dock.style.left=`${g.chatLeft+g.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';
+    canvas.style.display='';
+    place({chatLeft:g.chatLeft,chatWidth:g.chatWidth},changed);
     const focus=mode==='focus', L=state.looks[mode], narrow=!focus&&!g.wide;
     // Narrow Window Seat puts text over the room, so keep a readability floor there.
     const blur=narrow?Math.max(L.blur,10):L.blur, bright=(narrow?Math.min(L.brightness,60):L.brightness)/100;
@@ -535,7 +765,7 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     const H=Math.max(144,Math.ceil(r.height/g.scale)), band=H-144;
     canvas.width=g.W;canvas.height=H;canvas.style.width=`${g.W*g.scale}px`;canvas.style.height=`${H*g.scale}px`;
     paint.save();paint.translate(0,band);
-    K.draw(paint,g.W,state.clock.hour,frame,{wx:g.wx,tx:g.tx,state:state.motion?'idle':'still'});
+    K.draw(paint,g.W,state.clock.hour,frame,{wx:g.wx,tx:g.tx,state:state.motion?act.state:'still',since:act.since});
     paint.restore();
     if(band>0){
       paint.drawImage(canvas,0,band,g.W,1,0,0,g.W,band);
@@ -548,13 +778,14 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     if(peek)setPeek(false);
     disposed=true;
     controller?.dispose();loop?.dispose();loop=null;for(const fn of off.reverse())fn();
+    tween=null;for(const n of ghosts)n.remove();ghosts.clear();
     overlay.dispose();canvas.remove();veil.remove();token.remove();surface.removeAttribute('data-kaffeehaus');for(const fn of restores.reverse())fn();
     onState({disabled:true,reason:'Off. Prior settings restored.'});
   };
   try {
     const report=state=>{
       if(disposed)return;
-      if(state.motion && !loop && sdk?.createBudgetedLoop) loop=sdk.createBudgetedLoop(()=>{if(!disposed){frame++;draw(controller.state())}},{fps:4,idleWhen:()=>disposed||!bounds.isConnected});
+      if(state.motion && !loop && sdk?.createBudgetedLoop) loop=sdk.createBudgetedLoop(()=>{if(!disposed){const s=controller.state();frame++;act=character.step({busy:flag(host?.busy),awaiting:flag(host?.awaitingResponse),hour:s.clock.hour,motion:s.motion});draw(s)}},{fps:4,idleWhen:()=>disposed||!bounds.isConnected});
       if(!state.motion && loop){loop.dispose();loop=null;frame=0;}
       onState({...state,peek,motionSupported:!!sdk?.createBudgetedLoop});
     };
@@ -583,10 +814,17 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
 function createSession(ctx, sdk, { mount = mountScene } = {}) {
   let scene = null, last = { disabled: true, reason: 'Off. Click Apply to start. Experimental: relies on Hermes internals that may change.' };
   const subs = new Set();
-  const report = s => { last = s; for (const fn of subs) { try { fn(s); } catch {} } };
+  // Settings are remembered in memory only (no storage), so Off then Apply returns to the same café.
+  let prefs = { mode: 'window', width: 780, looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } }, motionRequested: true };
+  const report = s => {
+    last = s;
+    if (!s.disabled && s.mode) prefs = { mode: s.mode, width: s.width, looks: s.looks, motionRequested: s.motionRequested, overrideHour: s.clock?.mode === 'manual' ? s.clock.hour : null };
+    for (const fn of subs) { try { fn(s); } catch {} }
+  };
   const session = {
     get scene() { return scene; },
     last: () => last,
+    prefs: () => prefs,
     subscribe(fn) { subs.add(fn); fn(last); return () => subs.delete(fn); },
     apply(prefs) {
       scene?.dispose(); scene = null;
@@ -604,64 +842,34 @@ function createSession(ctx, sdk, { mount = mountScene } = {}) {
   return session;
 }
 
+// The sidebar tab is only the launcher: Hermes starts plugins like this from a tab, so the
+// scene has to be switched on here. Every setting lives on the café's own card (the menu
+// board in Window Seat, the ☕ pill in Focus and Classic), so the tab can be closed.
 function mountControls(container, ctx, session) {
   let disposed = false;
-  const off = [], nodes = {};
-  const form = document.createElement('div'); form.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--ui-text-primary);font:14px/1.5 system-ui';
-  const add = (tag, key, text) => { const n = document.createElement(tag); n.dataset.kh = key; if (text) n.textContent = text; nodes[key] = n; form.append(n); return n; };
-  const label = (name, node) => { const l = document.createElement('label'); l.textContent = name + ' '; l.append(node); form.append(l); };
-  const select = add('select', 'mode'); for (const [value, text] of [['window', 'Window Seat'], ['focus', 'Focus'], ['classic', 'Classic (palette, no room)']]) { const o = document.createElement('option'); o.value = value; o.textContent = text; select.append(o); } label('Mode', select);
-  const width = add('input', 'width'); width.type = 'range'; width.min = '360'; width.max = '1000'; width.step = '10'; width.value = '780'; label('Reading width (px)', width);
-  const hour = add('input', 'hour'); hour.type = 'range'; hour.min = '0'; hour.max = '23.99'; hour.step = '.01'; hour.value = '12'; label('Manual civil hour', hour);
-  // Look sliders edit the active mode only; values are kept per mode in memory.
-  const LOOK_LABELS = [['blur', 'Scene blur', 'px'], ['brightness', 'Scene brightness', '%'], ['veil', 'Text panel opacity', '%'], ['glass', 'Glass blur', 'px']];
-  let looks = { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } };
-  const lookInputs = {}, lookReadouts = {};
-  for (const [key, name, unit] of LOOK_LABELS) {
-    const n = add('input', 'look-' + key); n.type = 'range'; [n.min, n.max] = LOOK_RANGES[key].map(String); n.step = '1'; n.value = String(looks.focus[key]);
-    const out = document.createElement('output'); out.textContent = `${n.value}${unit}`; lookReadouts[key] = [out, unit];
-    const l = document.createElement('label'); l.textContent = name + ' '; l.append(n, ' ', out); form.append(l); lookInputs[key] = n;
-  }
-  const showLook = mode => { const room = mode !== 'classic'; for (const n of [width, hour, ...LOOK_LABELS.map(([key]) => lookInputs[key])]) n.disabled = !room; if (!room) return; for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
-  const resetLook = add('button', 'reset-look', 'Reset look');
-  const follow = add('button', 'follow', 'Follow local time');
-  const motion = add('button', 'motion', 'Motion off');
-  const peek = add('button', 'peek', 'Peek at room');
-  const apply = add('button', 'apply', 'Apply to one chat (experimental)');
-  const stop = add('button', 'off', 'Off / restore');
-  const status = add('span', 'status', ''); status.setAttribute('role', 'status');
-  add('span', 'note', 'Runs entirely on your Mac: no network, no storage, never reads your chats. Inspired by Borealis. You can close this tab; the scene keeps running.');
-  for (const n of form.querySelectorAll('button,input,select')) n.style.cssText = 'color:inherit;background:var(--ui-panel-background,var(--ui-chat-surface-background));border:1px solid var(--ui-stroke-secondary);padding:6px;border-radius:4px;max-width:100%';
-  for (const n of form.querySelectorAll('button')) n.type = 'button';
+  const off = [];
+  const el = (tag, css, text) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text != null) n.textContent = text; return n; };
+  const form = el('div', 'display:flex;flex-direction:column;gap:12px;color:var(--ui-text-primary);font:14px/1.5 system-ui');
+  const title = el('strong', 'font:600 16px/1.2 "Iowan Old Style",Palatino,Georgia,serif', '☕ Kaffeehaus');
+  const btnCss = 'color:inherit;background:var(--ui-panel-background,var(--ui-chat-surface-background));border:1px solid var(--ui-stroke-secondary);padding:8px 10px;border-radius:6px;font:inherit;cursor:pointer;text-align:left';
+  const apply = el('button', btnCss, 'Open the café'); apply.type = 'button'; apply.dataset.kh = 'apply';
+  const stop = el('button', btnCss, 'Off · restore Hermes'); stop.type = 'button'; stop.dataset.kh = 'off';
+  const status = el('p', 'margin:0;color:var(--ui-text-secondary)'); status.setAttribute('role', 'status'); status.dataset.kh = 'status';
+  const how = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:13px', 'Change the seat, the hour, the blend and the look from the café itself: the chalkboard on the wall in Window Seat, or the ☕ pill in Focus and Classic. You can close this tab; the café keeps running.');
+  const note = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:12px', 'Runs entirely on your Mac: no network, no storage, never reads your chats. The note-taker only knows whether Hermes is working. Experimental: relies on Hermes internals that may change. Inspired by Borealis.');
+  form.append(title, apply, stop, status, how, note);
   container.append(form);
+  const SEATS = { window: 'Window Seat', focus: 'Focus', classic: 'Classic' };
   const say = text => { if (status.textContent !== text) status.textContent = text; };
   const report = s => {
     if (disposed) return;
-    if (s.disabled) { say(s.reason); motion.textContent = 'Motion off'; motion.setAttribute('aria-pressed', 'false'); peek.textContent = 'Peek at room'; peek.setAttribute('aria-pressed', 'false'); follow.setAttribute('aria-pressed', 'false'); return; }
-    // Live region describes state, not a ticking clock. The hour slider remains
-    // an ordinary labeled control; time samples must not re-announce status.
-    if (select.value !== s.mode) select.value = s.mode; // keep the tab in sync with the in-scene controls
-    if (Number.isFinite(s.width) && width.value !== String(s.width)) width.value = String(s.width);
-    if (s.looks) { looks = { focus: { ...s.looks.focus }, window: { ...s.looks.window } }; showLook(s.mode); }
-    say(`${{ window: 'Window Seat', focus: 'Focus', classic: 'Classic' }[s.mode]} · ${s.clock.mode} · motion ${s.motion ? 'on' : 'off'}${s.reduced ? ' (OS reduced motion)' : ''} · ${s.motionRequested ? 'manual request' : 'manual off'} · ${s.peek ? 'room peek' : 'chat'}`);
-    follow.setAttribute('aria-pressed', String(s.clock.mode === 'auto'));
-    motion.textContent = s.motion ? 'Motion on' : 'Motion off'; motion.setAttribute('aria-pressed', String(s.motion));
-    peek.textContent = s.peek ? 'Back to chat' : 'Peek at room'; peek.setAttribute('aria-pressed', String(!!s.peek));
+    if (s.disabled) { say(s.reason); apply.textContent = 'Open the café'; stop.disabled = true; return; }
+    apply.textContent = 'Reapply to this chat'; stop.disabled = false;
+    // Describes state, not a ticking clock, so screen readers are not re-announced every minute.
+    say(`On · ${SEATS[s.mode]} · ${s.clock.mode === 'auto' ? 'following the clock' : 'hour set by hand'} · motion ${s.motion ? 'on' : 'off'}${s.reduced ? ' (macOS Reduce motion)' : ''}${s.peek ? ' · peeking at the room' : ''}`);
   };
-  const listen = (n, type, fn) => off.push(ctx.addEventListener(n, type, fn));
-  const update = patch => session.update(patch);
-  const scene = () => session.scene;
-  listen(select, 'change', () => update({ mode: select.value })); listen(width, 'input', () => update({ width: Number(width.value) }));
-  listen(hour, 'input', () => update({ overrideHour: Number(hour.value) })); listen(follow, 'click', () => update({ overrideHour: null }));
-  for (const [key] of LOOK_LABELS) listen(lookInputs[key], 'input', () => {
-    const mode = select.value; if (mode === 'classic') return; looks[mode] = { ...looks[mode], [key]: Number(lookInputs[key].value) }; showLook(mode); update({ look: { [key]: looks[mode][key] } });
-  });
-  listen(resetLook, 'click', () => { const mode = select.value; if (mode === 'classic') return; looks[mode] = { ...DEFAULT_LOOKS[mode] }; showLook(mode); update({ look: looks[mode] }); });
-  listen(select, 'change', () => showLook(select.value));
-  listen(motion, 'click', () => { if (scene()?.enabled) update({ motionRequested: !scene().state().motionRequested }); });
-  listen(peek, 'click', () => { if (scene()?.enabled) scene().setPeek(!scene().state().peek); });
-  listen(stop, 'click', () => session.off());
-  listen(apply, 'click', () => session.apply({ mode: select.value, width: Number(width.value), looks }));
+  off.push(ctx.addEventListener(stop, 'click', () => session.off()));
+  off.push(ctx.addEventListener(apply, 'click', () => session.apply(session.prefs())));
   off.push(session.subscribe(report)); // shows the live state when the tab is reopened
   // Closing the tab removes only this view; the scene is the session's.
   const dispose = () => { if (disposed) return; disposed = true; off.reverse().forEach(fn => fn()); form.remove(); };
@@ -675,5 +883,10 @@ const plugin={id:'hermes-kaffeehaus',name:'Kaffeehaus',defaultEnabled:false,
   const session=createSession(ctx,sdk); // outlives the tab: hiding the sidebar keeps the scene
   function Controls(){const ref=useRef(null);useEffect(()=>{const c=mountControls(ref.current,ctx,session);return ()=>c.dispose()},[]);return createElement('div',{ref,style:{padding:12,overflow:'auto',height:'100%'}})}
   ctx.register({id:'controls',area:'panes',title:'Kaffeehaus',data:{placement:'right',width:'320px'},render:()=>createElement(Controls)});
+  // ⌘K rows, so the café can be opened or closed (and the tab brought back) after the tab is closed.
+  ctx.register({id:'toggle',area:'palette',data:{label:'Kaffeehaus café',keywords:['kaffeehaus','cafe','coffee','scene','ambient'],
+   detail:()=>session.scene?'on':'off',detailVariant:'state',run:()=>session.scene?session.off():session.apply(session.prefs())}});
+  ctx.register({id:'tab',area:'palette',data:{label:'Kaffeehaus: show the tab',keywords:['kaffeehaus','cafe','pane'],
+   run:()=>{try{sdk.host?.revealPane?.('hermes-kaffeehaus:controls')}catch{}}}});
  }};
 export default plugin;

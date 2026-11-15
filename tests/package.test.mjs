@@ -24,7 +24,8 @@ test('plugin is opt-in, imports only the SDK and React, and has no network or st
   vm.runInNewContext(source.replace(/^import .*;\n/gm, '').replace('export default plugin;', 'capture(plugin);'), context);
   assert.equal(definition.id, 'hermes-kaffeehaus'); assert.equal(definition.defaultEnabled, false);
   definition.register({ register: c => regs.push(c), onDispose() {} });
-  assert.equal(regs.length, 1); assert.equal(regs[0].area, 'panes');
+  assert.deepEqual(regs.map(r => r.area), ['panes', 'palette', 'palette']);
+  for (const r of regs.slice(1)) assert.equal(typeof r.data.run, 'function');
   for (const pattern of [/\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /localStorage/, /sessionStorage/, /indexedDB/, /geolocation/, /sendBeacon/, /\beval\s*\(/, /new Function\s*\(/, /\bimport\s*\(/])
     assert.equal(pattern.test(source), false, String(pattern));
 });
