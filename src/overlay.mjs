@@ -122,7 +122,8 @@ export function createOverlay({ root, listen, update, peek = () => {}, reduced =
   listen(document, 'keydown', e => {
     if (!open || e.defaultPrevented) return;
     if (e.key === 'Escape') { e.preventDefault(); setOpen(false); return; }
-    if (e.key !== 'Tab') return; // keep keyboard focus inside the open card
+    if (e.key !== 'Tab') return; // keep keyboard focus inside the open card (only when focus is in it or on its trigger)
+    if (!(current().panel.contains(e.target) || e.target === trigger() || e.target === document.body)) return;
     const items = [...current().panel.querySelectorAll('button,input')].filter(n => n.offsetParent !== null);
     if (!items.length) return;
     const i = items.indexOf(document.activeElement), next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i === items.length - 1 ? 0 : i + 1);
@@ -177,7 +178,7 @@ export function createOverlay({ root, listen, update, peek = () => {}, reduced =
       p.blendName.textContent = 'Blend: ' + name;
       if (document.activeElement !== p.width) p.width.value = String(state.width); p.widthOut.textContent = state.width + ' px';
       p.motion.textContent = state.motion ? p.T.motion[0] : p.T.motion[1]; p.motion.setAttribute('aria-pressed', String(!!state.motion));
-      p.motion.disabled = !!state.reduced; p.motion.title = state.reduced ? 'macOS Reduce motion is on' : '';
+      p.motion.disabled = !!state.reduced || state.motionSupported === false; p.motion.title = state.reduced ? 'macOS Reduce motion is on' : state.motionSupported === false ? 'Motion needs a newer Hermes' : '';
     }
     place();
   }

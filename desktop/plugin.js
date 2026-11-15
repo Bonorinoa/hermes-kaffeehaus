@@ -477,7 +477,8 @@ function createOverlay({ root, listen, update, peek = () => {}, reduced = () => 
   listen(document, 'keydown', e => {
     if (!open || e.defaultPrevented) return;
     if (e.key === 'Escape') { e.preventDefault(); setOpen(false); return; }
-    if (e.key !== 'Tab') return; // keep keyboard focus inside the open card
+    if (e.key !== 'Tab') return; // keep keyboard focus inside the open card (only when focus is in it or on its trigger)
+    if (!(current().panel.contains(e.target) || e.target === trigger() || e.target === document.body)) return;
     const items = [...current().panel.querySelectorAll('button,input')].filter(n => n.offsetParent !== null);
     if (!items.length) return;
     const i = items.indexOf(document.activeElement), next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i === items.length - 1 ? 0 : i + 1);
@@ -532,7 +533,7 @@ function createOverlay({ root, listen, update, peek = () => {}, reduced = () => 
       p.blendName.textContent = 'Blend: ' + name;
       if (document.activeElement !== p.width) p.width.value = String(state.width); p.widthOut.textContent = state.width + ' px';
       p.motion.textContent = state.motion ? p.T.motion[0] : p.T.motion[1]; p.motion.setAttribute('aria-pressed', String(!!state.motion));
-      p.motion.disabled = !!state.reduced; p.motion.title = state.reduced ? 'macOS Reduce motion is on' : '';
+      p.motion.disabled = !!state.reduced || state.motionSupported === false; p.motion.title = state.reduced ? 'macOS Reduce motion is on' : state.motionSupported === false ? 'Motion needs a newer Hermes' : '';
     }
     place();
   }
@@ -662,7 +663,7 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
   back.style.cssText='position:absolute;top:12px;right:12px;z-index:50;padding:10px 16px;color:var(--ui-text-primary);background:var(--ui-panel-background,var(--ui-chat-surface-background));border:2px solid var(--ui-stroke-secondary);border-radius:6px';
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   // In-scene controls (menu board / glass pill). Errors from bad patches are ignored, never thrown into the app.
-  const overlay=createOverlay({root:bounds,listen:(n,t,f)=>off.push(ctx.addEventListener(n,t,f)),update:patch=>{try{if(!disposed)controller.update(patch)}catch{}},
+  const overlay=createOverlay({root:bounds,listen:(n,t,f)=>off.push(ctx.addEventListener(n,t,f)),update:patch=>{try{if(!disposed)controller.update(sdk?.createBudgetedLoop?patch:{...patch,motionRequested:false})}catch{}},
     peek:()=>setPeek(true),reduced:()=>reduced.matches});
   let loop=null, frame=0;
   // The note-taker follows only whether Hermes is working, never what was said.
@@ -678,13 +679,13 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     const v=veil.cloneNode(false);g.push(v);
     for(const n of g){n.setAttribute('aria-hidden','true');n.style.transition=`opacity ${DUR}ms ease`;n.style.opacity='1';ghosts.add(n)}
     veil.after(...g);void veil.offsetWidth;for(const n of g)n.style.opacity='0';
-    setTimeout(()=>{for(const n of g){n.remove();ghosts.delete(n)}},DUR+80);
+    const t=setTimeout(()=>{for(const n of g){n.remove();ghosts.delete(n)}},DUR+80);off.push(()=>clearTimeout(t));
   };
   const geo=s=>{
     if(s.native){surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
       dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;dock.style.translate=native.translate;content.style.paddingTop='52px';return}
     surface.style.setProperty('--composer-width',`${s.chatWidth}px`);content.style.width=`${s.chatWidth}px`;content.style.marginLeft=`${s.chatLeft}px`;content.style.marginRight='0px';
-    dock.style.left=`${s.chatLeft+s.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';dock.style.translate='none';content.style.paddingTop=native.pad;
+    dock.style.left=`${s.chatLeft+s.chatWidth/2}px`;dock.style.right='auto';dock.style.transform='translateX(-50%)';dock.style.translate='none';if(!s.mid)content.style.paddingTop=native.pad;
   };
   const rel=()=>{const a=content.getBoundingClientRect(),b=bounds.getBoundingClientRect();return {chatLeft:a.left-b.left,chatWidth:a.width}};
   const place=(s,animate)=>{
@@ -692,12 +693,12 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     if(!animate||reduced.matches)return geo(s);
     const from=rel();geo(s);const to=rel();
     if(Math.abs(from.chatLeft-to.chatLeft)<2&&Math.abs(from.chatWidth-to.chatWidth)<2)return;
-    tween={s,start:performance.now()};geo(from);
+    tween={s,start:performance.now()};geo({...from,mid:true});content.style.paddingTop=s.native?'52px':native.pad; // padding goes first: no pop on the last frame
     const step=now=>{
       if(disposed||!tween)return;
       const t=Math.min(1,(now-tween.start)/DUR),e=ease(t);
       if(t>=1){const last=tween.s;tween=null;geo(last);return}
-      geo({chatLeft:from.chatLeft+(to.chatLeft-from.chatLeft)*e,chatWidth:from.chatWidth+(to.chatWidth-from.chatWidth)*e});requestAnimationFrame(step);
+      geo({mid:true,chatLeft:from.chatLeft+(to.chatLeft-from.chatLeft)*e,chatWidth:from.chatWidth+(to.chatWidth-from.chatWidth)*e});requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   };
@@ -737,7 +738,7 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
       place({native:true},changed);
       canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
       veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
-      overlay.render(state,layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
+      overlay.render({...state,motionSupported:!!sdk?.createBudgetedLoop},layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
       return;
     }
     canvas.style.display='';
@@ -757,7 +758,7 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     veil.style.background=focus&&r.width>700?`radial-gradient(ellipse 62% 78% at 50% 48%,${a(1)} 0%,${a(.93)} 45%,${a(.4)} 78%,rgba(20,17,20,0) 100%)`
       :g.wide?`linear-gradient(to right,transparent ${Math.max(0,g.chatLeft-40)}px,${a(1)} ${g.chatLeft}px)`:a(focus?.907:.81);
     if(peek){canvas.style.filter='none';canvas.style.transform='none';veil.style.background='transparent';veil.style.backdropFilter='none';}
-    overlay.render(state,g,peek,r);
+    overlay.render({...state,motionSupported:!!sdk?.createBudgetedLoop},g,peek,r);
     // The room is 144 logical px tall. When the pane is taller than the scaled
     // room (wide Window Seat, scaled to the room width), extend the wall upward instead of leaving an
     // empty band: copy the room's top row (plaster stripes, lamp cord) and shade
@@ -818,7 +819,7 @@ function createSession(ctx, sdk, { mount = mountScene } = {}) {
   let prefs = { mode: 'window', width: 780, looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } }, motionRequested: true };
   const report = s => {
     last = s;
-    if (!s.disabled && s.mode) prefs = { mode: s.mode, width: s.width, looks: s.looks, motionRequested: s.motionRequested, overrideHour: s.clock?.mode === 'manual' ? s.clock.hour : null };
+    if (!s.disabled && s.mode) prefs = { mode: s.mode, width: s.width, looks: s.looks, motionRequested: s.motionSupported === false ? prefs.motionRequested : s.motionRequested, overrideHour: s.clock?.mode === 'manual' ? s.clock.hour : null };
     for (const fn of subs) { try { fn(s); } catch {} }
   };
   const session = {

@@ -11,7 +11,7 @@ export function createSession(ctx, sdk, { mount = mountScene } = {}) {
   let prefs = { mode: 'window', width: 780, looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } }, motionRequested: true };
   const report = s => {
     last = s;
-    if (!s.disabled && s.mode) prefs = { mode: s.mode, width: s.width, looks: s.looks, motionRequested: s.motionRequested, overrideHour: s.clock?.mode === 'manual' ? s.clock.hour : null };
+    if (!s.disabled && s.mode) prefs = { mode: s.mode, width: s.width, looks: s.looks, motionRequested: s.motionSupported === false ? prefs.motionRequested : s.motionRequested, overrideHour: s.clock?.mode === 'manual' ? s.clock.hour : null };
     for (const fn of subs) { try { fn(s); } catch {} }
   };
   const session = {
