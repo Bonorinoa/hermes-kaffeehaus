@@ -449,13 +449,13 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     '--ui-accent':'#a8443c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
     '--ui-chat-bubble-background':'#2d221e','--ui-inline-code-background':'rgba(201,163,106,.13)','--ui-inline-code-foreground':'#e6c99a'};
   const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
-    left:dock.style.left,right:dock.style.right,transform:dock.style.transform,font:content.style.fontFamily,palette:{}};
+    left:dock.style.left,right:dock.style.right,transform:dock.style.transform,translate:dock.style.translate,font:content.style.fontFamily,pad:content.style.paddingTop,palette:{}};
   for(const k of Object.keys(PALETTE))native.palette[k]=surface.style.getPropertyValue(k);
   const id=`kh-${++sceneSerial}`;surface.setAttribute('data-kaffeehaus',id);
   own(surface,'--composer-width','780px');own(bounds,'background-color','transparent');own(bounds,'isolation','isolate');
   for (const p of ['width','margin-left','margin-right']) own(content,p,content.style.getPropertyValue(p));
   for (const p of ['left','right','transform','translate']) own(dock,p,dock.style.getPropertyValue(p));
-  own(content,'font-family',native.font);for(const k of Object.keys(PALETTE))own(surface,k,native.palette[k]);
+  own(content,'font-family',native.font);own(content,'padding-top',native.pad);for(const k of Object.keys(PALETTE))own(surface,k,native.palette[k]);
   // Tailwind 4 uses individual translate; it composes with transform. Own both
   // mechanisms while mounted, then restore each original value and priority.
   dock.style.translate='none';
@@ -499,13 +499,14 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     if(classic){
       // Hermes's own geometry; the ground is the house palette instead of the room.
       surface.style.setProperty('--composer-width',native.composer);content.style.width=native.width;content.style.marginLeft=native.ml;content.style.marginRight=native.mr;
-      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;
+      dock.style.left=native.left;dock.style.right=native.right;dock.style.transform=native.transform;dock.style.translate=native.translate;
+      content.style.paddingTop='52px'; // room for the pill above the first message
       canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
       veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
       overlay.render(state,layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
       return;
     }
-    canvas.style.display='';
+    canvas.style.display='';dock.style.translate='none';content.style.paddingTop=native.pad;
     const mode=state.mode==='classic'?'focus':state.mode; // peek from Classic shows the room as Focus does
     const g=layout({w:r.width,h:r.height,mode,width:state.width,peek});
     surface.style.setProperty('--composer-width',`${g.chatWidth}px`);
@@ -621,7 +622,7 @@ function mountControls(container, ctx, session) {
     const out = document.createElement('output'); out.textContent = `${n.value}${unit}`; lookReadouts[key] = [out, unit];
     const l = document.createElement('label'); l.textContent = name + ' '; l.append(n, ' ', out); form.append(l); lookInputs[key] = n;
   }
-  const showLook = mode => { const room = mode !== 'classic'; for (const [key] of LOOK_LABELS) lookInputs[key].disabled = !room; if (!room) return; for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
+  const showLook = mode => { const room = mode !== 'classic'; for (const n of [width, hour, ...LOOK_LABELS.map(([key]) => lookInputs[key])]) n.disabled = !room; if (!room) return; for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
   const resetLook = add('button', 'reset-look', 'Reset look');
   const follow = add('button', 'follow', 'Follow local time');
   const motion = add('button', 'motion', 'Motion off');

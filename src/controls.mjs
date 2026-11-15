@@ -46,7 +46,7 @@ export function mountControls(container, ctx, session) {
     const out = document.createElement('output'); out.textContent = `${n.value}${unit}`; lookReadouts[key] = [out, unit];
     const l = document.createElement('label'); l.textContent = name + ' '; l.append(n, ' ', out); form.append(l); lookInputs[key] = n;
   }
-  const showLook = mode => { const room = mode !== 'classic'; for (const [key] of LOOK_LABELS) lookInputs[key].disabled = !room; if (!room) return; for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
+  const showLook = mode => { const room = mode !== 'classic'; for (const n of [width, hour, ...LOOK_LABELS.map(([key]) => lookInputs[key])]) n.disabled = !room; if (!room) return; for (const [key] of LOOK_LABELS) { const v = String(looks[mode][key]); if (lookInputs[key].value !== v) lookInputs[key].value = v; const [out, unit] = lookReadouts[key]; out.textContent = `${v}${unit}`; } };
   const resetLook = add('button', 'reset-look', 'Reset look');
   const follow = add('button', 'follow', 'Follow local time');
   const motion = add('button', 'motion', 'Motion off');
