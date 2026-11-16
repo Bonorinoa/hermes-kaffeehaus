@@ -89,7 +89,7 @@ Switching seats eases the chat into place and fades the room across. With macOS 
 | What you see | Why, and what to do |
 |---|---|
 | The café switched itself off | You opened a different chat in that window, changed to a light theme, or Hermes changed its layout. Open the chat you want and run ⌘K → **Kaffeehaus café** again. |
-| "Not applied" | It needs exactly one chat on screen and a dark theme. Close split panes and try again. |
+| The café did not open | It needs the chat you are reading, and a dark theme. Other tabs can stay open. If two chats are side by side, close one. A short note says why. |
 | The tab is gone | You closed it, which is fine. ⌘K → **Kaffeehaus: show the tab** brings it back. |
 | Nothing moves | macOS **Reduce motion** is on (System Settings → Accessibility → Display), or Motion is off on the card. |
 | The menu covers my text | That's on purpose while it's open, so the window stays visible. Esc closes it. |

@@ -10,7 +10,7 @@ const plugin={id:'hermes-kaffeehaus',name:'Kaffeehaus',defaultEnabled:false,
   ctx.register({id:'controls',area:'panes',title:'Kaffeehaus',data:{placement:'right',width:'320px'},render:()=>createElement(Controls)});
   // ⌘K rows, so the café can be opened or closed (and the tab brought back) after the tab is closed.
   ctx.register({id:'toggle',area:'palette',data:{label:'Kaffeehaus café',keywords:['kaffeehaus','cafe','coffee','scene','ambient'],
-   detail:()=>session.scene?'on':'off',detailVariant:'state',run:()=>session.scene?session.off():session.apply(session.prefs())}});
+   detail:()=>session.live()?'on':'off',detailVariant:'state',run:()=>session.toggle(session.prefs())}});
   ctx.register({id:'tab',area:'palette',data:{label:'Kaffeehaus: show the tab',keywords:['kaffeehaus','cafe','pane'],
    run:()=>{try{sdk.host?.revealPane?.('hermes-kaffeehaus:controls')}catch{}}}});
  }};

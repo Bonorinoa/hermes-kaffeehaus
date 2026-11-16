@@ -4,8 +4,28 @@ import { DEFAULT_LOOKS } from './controller.mjs';
 // The scene belongs to the plugin, not to the sidebar tab: closing the tab or
 // hiding the sidebar must not switch the scene off. createSession lives for the
 // plugin's lifetime (disposed via ctx.onDispose); mountControls is one view of it.
+// Hermes keeps inactive chats mounted behind data-pane-hidden. Only the chat on
+// screen counts. Two chats actually on screen stay native.
+function chatsOnScreen() {
+  return [...document.querySelectorAll('[data-chat-surface]')].filter(el => !el.closest?.('[data-pane-hidden]'));
+}
+
+const PLAIN = {
+  'Unavailable or already owned chat surface': 'This chat is not ready for the café.',
+  'Scoped lifecycle unavailable': 'The app did not give the café a place to live.',
+  'Expected private chat hooks missing (floating/HUD not supported)': 'This layout is not supported. Pop-out and HUD stay as they are.',
+  'Unsupported appearance / forced colors; native chat preserved': 'This theme is too light, or the colors could not be read. Dark themes only.',
+  'Canvas unavailable': 'This window cannot draw the café.',
+};
+
+function plain(reason) {
+  if (PLAIN[reason]) return 'The café did not open. ' + PLAIN[reason];
+  if (typeof reason === 'string' && reason.startsWith('Mount failed')) return 'The café did not open. Something in this chat blocked it.';
+  return 'The café did not open. ' + reason;
+}
+
 export function createSession(ctx, sdk, { mount = mountScene } = {}) {
-  let scene = null, last = { disabled: true, reason: 'Off. Click Apply to start. Experimental: relies on Hermes internals that may change.' };
+  let scene = null, mountedEl = null, last = { disabled: true, reason: 'Off. Click Apply to start. Experimental: relies on Hermes internals that may change.' };
   const subs = new Set();
   // Settings are remembered in memory only (no storage), so Off then Apply returns to the same café.
   let prefs = { mode: 'window', width: 780, looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } }, motionRequested: true };
@@ -14,22 +34,38 @@ export function createSession(ctx, sdk, { mount = mountScene } = {}) {
     if (!s.disabled && s.mode) prefs = { mode: s.mode, width: s.width, looks: s.looks, motionRequested: s.motionSupported === false ? prefs.motionRequested : s.motionRequested, overrideHour: s.clock?.mode === 'manual' ? s.clock.hour : null };
     for (const fn of subs) { try { fn(s); } catch {} }
   };
+  const announce = reason => {
+    report({ disabled: true, reason });
+    try { sdk?.host?.notify?.({ kind: 'info', message: reason }); } catch {}
+  };
   const session = {
     get scene() { return scene; },
+    // True only when the café is on the chat the user is reading. A café left on a hidden tab is not.
+    live() {
+      const surfaces = chatsOnScreen();
+      return !!(scene?.enabled && surfaces.length === 1 && mountedEl === surfaces[0]);
+    },
     last: () => last,
     prefs: () => prefs,
     subscribe(fn) { subs.add(fn); fn(last); return () => subs.delete(fn); },
     apply(prefs) {
-      scene?.dispose(); scene = null;
-      const surfaces = [...document.querySelectorAll('[data-chat-surface]')];
-      if (surfaces.length !== 1) { report({ disabled: true, reason: 'Not applied: requires exactly one chat surface. Split panes stay native.' }); return; }
+      scene?.dispose(); scene = null; mountedEl = null;
+      const surfaces = chatsOnScreen();
+      if (surfaces.length !== 1) {
+        announce(surfaces.length === 0
+          ? 'The café did not open. No chat is on screen in this window.'
+          : 'The café did not open. More than one chat is open. Close the extra pane and try again.');
+        return;
+      }
       scene = mount(surfaces[0], ctx, sdk, { onState: report });
-      if (scene.enabled) scene.update(prefs);
-      else { const reason = 'Not applied: ' + scene.reason; scene = null; report({ disabled: true, reason }); }
+      if (scene.enabled) { mountedEl = surfaces[0]; scene.update(prefs); }
+      else { const reason = plain(scene.reason); scene = null; announce(reason); }
     },
-    off() { scene?.dispose(); scene = null; report({ disabled: true, reason: 'Off. Prior settings restored.' }); },
+    off() { scene?.dispose(); scene = null; mountedEl = null; report({ disabled: true, reason: 'Off. Prior settings restored.' }); },
+    // Palette row: turn off only the café you can see. Otherwise open the one on screen.
+    toggle(prefs) { if (session.live()) session.off(); else session.apply(prefs); },
     update(patch) { if (scene?.enabled) scene.update(patch); },
-    dispose() { scene?.dispose(); scene = null; subs.clear(); },
+    dispose() { scene?.dispose(); scene = null; mountedEl = null; subs.clear(); },
   };
   ctx.onDispose(session.dispose);
   return session;

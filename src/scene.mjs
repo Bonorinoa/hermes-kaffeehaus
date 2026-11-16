@@ -142,6 +142,8 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
   };
   const draw=state=>{
     if(disposed||tearingDown)return;
+    // Inactive tabs stay mounted. A café on one of them is no longer the chat on screen.
+    if(controller&&surface.closest('[data-pane-hidden]')){dispose();onState({disabled:true,reason:'Off: that chat is no longer on screen. Open the café again on the one you are reading.'});return}
     if(controller&&(!surface.isConnected||one('aui_thread-content')!==content||one('composer-dock')!==dock||surface.querySelector('[data-popped-out]')||!supportedAppearance())){dispose();onState({disabled:true,reason:'Off: host hooks or appearance changed; native state restored'});return}
     const r=bounds.getBoundingClientRect();
     if(!r.width||!r.height)return;

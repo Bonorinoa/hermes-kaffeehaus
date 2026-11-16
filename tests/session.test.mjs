@@ -43,3 +43,62 @@ test('plugin unload disposes the scene; a refused Apply leaves nothing mounted',
   assert.equal(refused.scene, null);
   assert.equal(last.disabled, true); assert.match(last.reason, /light theme/);
 });
+
+// Hermes keeps inactive chats mounted. A hidden one must not look like a split.
+function withChats(nodes, fn) {
+  const prev = globalThis.document;
+  globalThis.document = { querySelectorAll: () => nodes };
+  try { return fn(); } finally { globalThis.document = prev; }
+}
+const shown = () => ({ closest: () => null });
+const kept = () => ({ closest: sel => (sel === '[data-pane-hidden]' ? {} : null) });
+
+test('a hidden keep-alive chat does not block the chat on screen', () => {
+  const visible = shown(), hidden = kept();
+  withChats([hidden, visible], () => {
+    let mounted;
+    const session = createSession(fakeCtx(), {}, { mount: surface => (mounted = surface, fakeScene()) });
+    session.apply({ mode: 'window', width: 780 });
+    assert.equal(mounted, visible);
+    assert.equal(session.scene.enabled, true);
+  });
+});
+
+test('two chats on screen stay native, and the refusal is announced', () => {
+  const notes = [];
+  withChats([shown(), shown()], () => {
+    let last, mounted = false;
+    const session = createSession(fakeCtx(), { host: { notify: n => notes.push(n) } }, {
+      mount: () => { mounted = true; return fakeScene(); },
+    });
+    session.subscribe(s => (last = s));
+    session.apply({});
+    assert.equal(mounted, false);
+    assert.equal(session.scene, null);
+    assert.match(last.reason, /More than one chat is open/);
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].message, last.reason);
+  });
+});
+
+test('the palette opens the chat on screen instead of turning off a hidden café', () => {
+  const first = shown(), next = shown();
+  const mounted = surface => ({ enabled: true, surface, update() {}, dispose() {} });
+  const session = createSession(fakeCtx(), {}, { mount: mounted });
+  withChats([first], () => {
+    session.toggle({ mode: 'window' });
+    assert.equal(session.scene.surface, first);
+    assert.equal(session.live(), true);
+    session.toggle({});
+    assert.equal(session.scene, null, 'toggle off only when the café is on the chat you are reading');
+    session.toggle({ mode: 'window' });
+    assert.equal(session.scene.surface, first);
+  });
+  first.closest = () => ({}); // that chat is now a hidden keep-alive tab
+  withChats([first, next], () => {
+    assert.equal(session.live(), false);
+    session.toggle({ mode: 'focus' });
+    assert.equal(session.scene.surface, next);
+    assert.equal(session.live(), true);
+  });
+});
