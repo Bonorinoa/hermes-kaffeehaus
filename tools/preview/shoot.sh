@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Screenshot one scene at six hours (no Hermes needed). Needs Google Chrome.
+# Screenshot one scene at six times of day (no Hermes needed). Needs Google Chrome.
 # usage: tools/preview/shoot.sh <scene-folder>     e.g. tools/preview/shoot.sh _template  -> tools/preview/<scene>.png
 cd "${0:A:h}"
 '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files \

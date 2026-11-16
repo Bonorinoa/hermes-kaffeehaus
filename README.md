@@ -124,7 +124,7 @@ There are no dependencies; you only need Node 20 or newer.
 node build.mjs            # src/ + scenes/ → desktop/plugin.js (one file; imports only the SDK and React)
 node --test               # unit tests: clock, layout, looks, character, art, scene contract, package rules
 tools/fixture/shoot.sh window "seat=window&hour=10&open=1"   # screenshot the real bundle on a stand-in chat page (needs Chrome)
-tools/preview/shoot.sh kaffeehaus                           # one scene at six hours
+tools/preview/shoot.sh kaffeehaus                           # one scene at six times of day
 ```
 
 | Path | What it is |

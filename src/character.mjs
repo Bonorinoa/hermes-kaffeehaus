@@ -12,6 +12,9 @@ export const CHARACTER = Object.freeze({
 const late = h => h >= 23 || h < 5;      // dozing hours
 const veryLate = h => h >= 1 && h < 5;   // sleeping-bag hours (rare on purpose)
 
+// Every state the machine can hand to a scene's draw(); a character scene must draw all of them.
+export const EMITTED_STATES = Object.freeze(['idle', 'busy', 'lookup', 'wrapup', 'doze', 'sleep', 'still']);
+
 export function createCharacter(T = CHARACTER) {
   let state = 'idle', since = 0, idle = 0, wasBusy = false, wasAwaiting = false;
   const go = next => { if (next !== state) { state = next; since = 0; } };

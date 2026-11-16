@@ -24,4 +24,6 @@ export const NIGHT_WINDOW = Object.freeze({
   // Classic palette: Hermes theme variables (allowed keys: PALETTE_KEYS in src/scenes.mjs). Keep text ≥ 4.5:1 on a dark ground.
   palette: Object.freeze({ '--ui-text-primary': '#e8ecf4', '--ui-text-secondary': '#c6cede', '--ui-text-tertiary': '#a3aec4',
     '--ui-accent': '#f0b45a', '--ui-chat-bubble-background': '#1c2233' }),
+  // Optional: Classic ground (CSS background) and font. Leave out for a neutral dark and Hermes's own font.
+  classic: Object.freeze({ ground: 'linear-gradient(180deg,#151b2b,#0e121c)' }),
 });

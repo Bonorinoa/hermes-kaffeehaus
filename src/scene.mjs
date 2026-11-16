@@ -152,12 +152,12 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     if(changed)fade();
     shown=key;
     for(const k of KEYS)surface.style.setProperty(k,classic&&k in PALETTE?PALETTE[k]:native.palette[k]);
-    content.style.fontFamily=classic?'"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif':native.font;
+    content.style.fontFamily=classic&&SCENE.classic?.font?SCENE.classic.font:native.font;
     if(classic){
-      // Hermes's own geometry (plus room for the pill); the ground is the house palette instead of the room.
+      // Hermes's own geometry (plus room for the pill); the ground is the scene's Classic ground instead of the picture.
       place({native:true},changed);
       canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
-      veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
+      veil.style.background=SCENE.classic?.ground||'linear-gradient(180deg,#1c1c21,#141417)'; // the scene's Classic ground, or a neutral dark
       overlay.render({...state,motionSupported:!!sdk?.createBudgetedLoop},layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
       return;
     }

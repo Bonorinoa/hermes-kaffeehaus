@@ -281,6 +281,10 @@ const KAFFEEHAUS = Object.freeze({
   palette: Object.freeze({ '--ui-text-primary': '#efe6d6', '--ui-text-secondary': '#dccbb0', '--ui-text-tertiary': '#c8b394', '--ui-text-quaternary': '#a8967c',
     '--ui-accent': '#b4534a', '--muted-foreground': '#cbb38c', '--ui-stroke-secondary': 'rgba(201,163,106,.30)', '--ui-stroke-tertiary': 'rgba(201,163,106,.18)',
     '--ui-chat-bubble-background': '#2d221e', '--ui-inline-code-background': 'rgba(201,163,106,.13)', '--ui-inline-code-foreground': '#e6c99a' }),
+  // Classic ground (a CSS background behind the chat) and type. Both optional: without them, a neutral dark and Hermes's own font.
+  classic: Object.freeze({
+    ground: 'radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)',
+    font: '"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif' }),
 });
 
 
@@ -587,6 +591,9 @@ const CHARACTER = Object.freeze({
 const late = h => h >= 23 || h < 5;      // dozing hours
 const veryLate = h => h >= 1 && h < 5;   // sleeping-bag hours (rare on purpose)
 
+// Every state the machine can hand to a scene's draw(); a character scene must draw all of them.
+const EMITTED_STATES = Object.freeze(['idle', 'busy', 'lookup', 'wrapup', 'doze', 'sleep', 'still']);
+
 function createCharacter(T = CHARACTER) {
   let state = 'idle', since = 0, idle = 0, wasBusy = false, wasAwaiting = false;
   const go = next => { if (next !== state) { state = next; since = 0; } };
@@ -763,12 +770,12 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     if(changed)fade();
     shown=key;
     for(const k of KEYS)surface.style.setProperty(k,classic&&k in PALETTE?PALETTE[k]:native.palette[k]);
-    content.style.fontFamily=classic?'"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif':native.font;
+    content.style.fontFamily=classic&&SCENE.classic?.font?SCENE.classic.font:native.font;
     if(classic){
-      // Hermes's own geometry (plus room for the pill); the ground is the house palette instead of the room.
+      // Hermes's own geometry (plus room for the pill); the ground is the scene's Classic ground instead of the picture.
       place({native:true},changed);
       canvas.style.display='none';veil.style.backdropFilter='none';veil.style.maskImage=veil.style.webkitMaskImage='none';
-      veil.style.background='radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)';
+      veil.style.background=SCENE.classic?.ground||'linear-gradient(180deg,#1c1c21,#141417)'; // the scene's Classic ground, or a neutral dark
       overlay.render({...state,motionSupported:!!sdk?.createBudgetedLoop},layout({w:r.width,h:r.height,mode:'focus',width:state.width,peek}),peek,r);
       return;
     }
@@ -864,7 +871,7 @@ function plain(reason) {
 }
 
 function createSession(ctx, sdk, { mount = mountScene } = {}) {
-  let scene = null, mountedEl = null, last = { disabled: true, reason: 'Off. Click Apply to start. Experimental: relies on Hermes internals that may change.' };
+  let scene = null, mountedEl = null, last = { disabled: true, reason: `Off. Click ${SCENE.open} to start. Experimental: relies on Hermes internals that may change.` };
   const subs = new Set();
   // Settings are remembered in memory only (no storage), so Off then Apply returns to the same scene.
   let prefs = { mode: 'window', width: 780, looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } }, motionRequested: true };
@@ -921,9 +928,9 @@ function mountControls(container, ctx, session) {
   const title = el('strong', 'font:600 16px/1.2 "Iowan Old Style",Palatino,Georgia,serif', 'Scenes');
   const sub = el('span', 'margin-top:-8px;color:var(--ui-text-tertiary);font-size:13px', `${SCENE.icon} ${SCENE.name} · ${SCENE.tagline}`);
   const btnCss = 'color:inherit;background:var(--ui-panel-background,var(--ui-chat-surface-background));border:1px solid var(--ui-stroke-secondary);padding:8px 10px;border-radius:6px;font:inherit;cursor:pointer;text-align:left';
-  const apply = el('button', btnCss, SCENE.open); apply.type = 'button'; apply.dataset.kh = 'apply';
-  const stop = el('button', btnCss, 'Off · restore Hermes'); stop.type = 'button'; stop.dataset.kh = 'off';
-  const status = el('p', 'margin:0;color:var(--ui-text-secondary)'); status.setAttribute('role', 'status'); status.dataset.kh = 'status';
+  const apply = el('button', btnCss, SCENE.open); apply.type = 'button';
+  const stop = el('button', btnCss, 'Off · restore Hermes'); stop.type = 'button';
+  const status = el('p', 'margin:0;color:var(--ui-text-secondary)'); status.setAttribute('role', 'status');
   const how = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:13px', 'Change the seat, the hour, the blend and the look from inside the scene: the board on the wall in Window Seat, or the pill in Focus and Classic. You can close this tab; the scene keeps running.');
   const note = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:12px', 'Runs entirely on your Mac: no network, no storage, never reads your chats. The note-taker only knows whether Hermes is working. Experimental: relies on Hermes internals that may change. Inspired by Borealis.');
   form.append(title, sub, apply, stop, status, how, note);

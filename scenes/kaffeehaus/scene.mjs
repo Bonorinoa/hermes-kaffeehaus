@@ -24,4 +24,8 @@ export const KAFFEEHAUS = Object.freeze({
   palette: Object.freeze({ '--ui-text-primary': '#efe6d6', '--ui-text-secondary': '#dccbb0', '--ui-text-tertiary': '#c8b394', '--ui-text-quaternary': '#a8967c',
     '--ui-accent': '#b4534a', '--muted-foreground': '#cbb38c', '--ui-stroke-secondary': 'rgba(201,163,106,.30)', '--ui-stroke-tertiary': 'rgba(201,163,106,.18)',
     '--ui-chat-bubble-background': '#2d221e', '--ui-inline-code-background': 'rgba(201,163,106,.13)', '--ui-inline-code-foreground': '#e6c99a' }),
+  // Classic ground (a CSS background behind the chat) and type. Both optional: without them, a neutral dark and Hermes's own font.
+  classic: Object.freeze({
+    ground: 'radial-gradient(110% 70% at 0% 0%,rgba(122,34,40,.30),rgba(122,34,40,0) 60%),radial-gradient(80% 60% at 100% 100%,rgba(201,163,106,.07),rgba(201,163,106,0) 70%),linear-gradient(180deg,#221a17,#171315)',
+    font: '"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif' }),
 });

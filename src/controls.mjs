@@ -26,7 +26,7 @@ function plain(reason) {
 }
 
 export function createSession(ctx, sdk, { mount = mountScene } = {}) {
-  let scene = null, mountedEl = null, last = { disabled: true, reason: 'Off. Click Apply to start. Experimental: relies on Hermes internals that may change.' };
+  let scene = null, mountedEl = null, last = { disabled: true, reason: `Off. Click ${SCENE.open} to start. Experimental: relies on Hermes internals that may change.` };
   const subs = new Set();
   // Settings are remembered in memory only (no storage), so Off then Apply returns to the same scene.
   let prefs = { mode: 'window', width: 780, looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } }, motionRequested: true };
@@ -83,9 +83,9 @@ export function mountControls(container, ctx, session) {
   const title = el('strong', 'font:600 16px/1.2 "Iowan Old Style",Palatino,Georgia,serif', 'Scenes');
   const sub = el('span', 'margin-top:-8px;color:var(--ui-text-tertiary);font-size:13px', `${SCENE.icon} ${SCENE.name} · ${SCENE.tagline}`);
   const btnCss = 'color:inherit;background:var(--ui-panel-background,var(--ui-chat-surface-background));border:1px solid var(--ui-stroke-secondary);padding:8px 10px;border-radius:6px;font:inherit;cursor:pointer;text-align:left';
-  const apply = el('button', btnCss, SCENE.open); apply.type = 'button'; apply.dataset.kh = 'apply';
-  const stop = el('button', btnCss, 'Off · restore Hermes'); stop.type = 'button'; stop.dataset.kh = 'off';
-  const status = el('p', 'margin:0;color:var(--ui-text-secondary)'); status.setAttribute('role', 'status'); status.dataset.kh = 'status';
+  const apply = el('button', btnCss, SCENE.open); apply.type = 'button';
+  const stop = el('button', btnCss, 'Off · restore Hermes'); stop.type = 'button';
+  const status = el('p', 'margin:0;color:var(--ui-text-secondary)'); status.setAttribute('role', 'status');
   const how = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:13px', 'Change the seat, the hour, the blend and the look from inside the scene: the board on the wall in Window Seat, or the pill in Focus and Classic. You can close this tab; the scene keeps running.');
   const note = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:12px', 'Runs entirely on your Mac: no network, no storage, never reads your chats. The note-taker only knows whether Hermes is working. Experimental: relies on Hermes internals that may change. Inspired by Borealis.');
   form.append(title, sub, apply, stop, status, how, note);
