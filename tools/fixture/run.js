@@ -12,13 +12,13 @@ const $ = s => document.querySelector(s);
 const step = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   await step(300);
-  const openCard = () => { const b = $('[data-kaffeehaus-ui=board]'); const p = $('[data-kaffeehaus-ui=pill]'); (b && b.style.display !== 'none' ? b : p).click(); };
+  const openCard = () => { const b = $('[data-scenes-ui=board]'); const p = $('[data-scenes-ui=pill]'); (b && b.style.display !== 'none' ? b : p).click(); };
   const seat = q.get('seat') || 'window';
-  if (q.get('hour')) { openCard(); const h = document.querySelector('[data-kaffeehaus-ui^=panel-][style*="display: block"] input[aria-label=Hour]'); h.value = q.get('hour'); h.dispatchEvent(new Event('input')); openCard(); }
+  if (q.get('hour')) { openCard(); const h = document.querySelector('[data-scenes-ui^=panel-][style*="display: block"] input[aria-label=Hour]'); h.value = q.get('hour'); h.dispatchEvent(new Event('input')); openCard(); }
   await step(200);
-  if (seat !== 'window') { openCard(); document.querySelector(`[data-kaffeehaus-ui^=panel-][style*="display: block"] [data-mode=${seat}]`).click(); }
+  if (seat !== 'window') { openCard(); document.querySelector(`[data-scenes-ui^=panel-][style*="display: block"] [data-mode=${seat}]`).click(); }
   await step(700);
-  const open = !!document.querySelector('[data-kaffeehaus-ui^=panel-][style*="display: block"]');
+  const open = !!document.querySelector('[data-scenes-ui^=panel-][style*="display: block"]');
   if (q.get('open') === '1' && !open) openCard();
   if (q.get('open') !== '1' && open) openCard();
   await step(Number(q.get('wait') || 1200));

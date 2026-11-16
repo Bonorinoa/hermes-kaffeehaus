@@ -28,7 +28,7 @@ test('plugin is opt-in, imports only the SDK and React, and has no network or st
   let definition; const regs = [];
   const context = { sdk: {}, createElement: () => null, useEffect() {}, useRef() {}, capture: x => definition = x };
   vm.runInNewContext(source.replace(/^import .*;\n/gm, '').replace('export default plugin;', 'capture(plugin);'), context);
-  assert.equal(definition.id, 'hermes-kaffeehaus'); assert.equal(definition.defaultEnabled, false);
+  assert.equal(definition.id, 'scenes'); assert.equal(definition.defaultEnabled, false);
   definition.register({ register: c => regs.push(c), onDispose() {} });
   assert.deepEqual(regs.map(r => r.area), ['panes', 'palette', 'palette']);
   for (const r of regs.slice(1)) assert.equal(typeof r.data.run, 'function');

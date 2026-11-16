@@ -1,6 +1,6 @@
-name: hermes-kaffeehaus
-version: "0.2.0"
-description: "A time-aware pixel café behind your Hermes Desktop chat, with three seats: Window Seat, Focus and Classic. Runs locally; experimental. Unofficial; not affiliated with Nous Research."
+name: scenes
+version: "0.3.0"
+description: "Living scenes behind your Hermes Desktop chat. Skins change the colours; scenes change the place. First scene: Kaffeehaus, a Viennese café that keeps your hours. Three seats: Window Seat, Focus and Classic. Runs locally; experimental. Unofficial; not affiliated with Nous Research."
 author: Augusto Gonzalez-Bonorino
 manifest_version: 1
 kind: standalone

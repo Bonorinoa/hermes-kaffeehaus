@@ -1,7 +1,7 @@
 import { DEFAULT_LOOKS, LOOK_RANGES, BLENDS } from './controller.mjs';
 import { SCENE } from './scenes.mjs';
 
-// In-scene controls (hybrid): a chalkboard menu board on the café wall when the
+// In-scene controls (hybrid): a menu board on the scene's wall when the
 // room is visible (wide Window Seat), a frosted-glass pill otherwise (Focus,
 // narrow Window Seat). Both open the same settings. Styled with element.style
 // only (no <style> injection); positioned against private host geometry.
@@ -35,20 +35,20 @@ export function createOverlay({ root, listen, update, peek = () => {}, reduced =
 
   // Triggers
   const board = el('button', 'position:absolute;z-index:40;width:180px;padding:11px 14px;text-align:left;background:#26282a;border:0;border-radius:0;box-shadow:0 0 0 3px #4a2c20,0 0 0 6px #6b4a2f,0 12px 22px rgba(0,0,0,.45);color:#ecebe4;cursor:pointer;display:none');
-  board.type = 'button'; board.dataset.kaffeehausUi = 'board'; board.setAttribute('aria-controls', 'kaffeehaus-paper'); board.setAttribute('aria-haspopup', 'dialog'); board.setAttribute('aria-expanded', 'false');
+  board.type = 'button'; board.dataset.scenesUi = 'board'; board.setAttribute('aria-controls', 'scenes-paper'); board.setAttribute('aria-haspopup', 'dialog'); board.setAttribute('aria-expanded', 'false');
   const bTitle = el('div', 'font:italic 600 19px/1.1 "Snell Roundhand","Apple Chancery","Bradley Hand",cursive;color:#f4f1e6', C.board);
   const bBlend = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#c9a36a;margin-top:6px');
   const bTime = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#d8d6cc');
   const bHint = el('div', 'font:11.5px/1.3 "Chalkboard",sans-serif;color:#c9c6ba;margin-top:6px', 'click to adjust ›');
   board.append(bTitle, bBlend, bTime, bHint);
   const pill = el('button', 'position:absolute;z-index:40;left:16px;top:14px;height:32px;padding:0 12px;border-radius:999px;font:12.5px/1 -apple-system,sans-serif;color:#eef0f4;background:rgba(28,32,44,.5);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(18px) saturate(1.4);box-shadow:0 6px 18px rgba(0,0,0,.28);cursor:pointer;display:none;white-space:nowrap');
-  pill.type = 'button'; pill.dataset.kaffeehausUi = 'pill'; pill.setAttribute('aria-controls', 'kaffeehaus-glass'); pill.setAttribute('aria-haspopup', 'dialog'); pill.setAttribute('aria-expanded', 'false');
+  pill.type = 'button'; pill.dataset.scenesUi = 'pill'; pill.setAttribute('aria-controls', 'scenes-glass'); pill.setAttribute('aria-haspopup', 'dialog'); pill.setAttribute('aria-expanded', 'false');
 
   // One panel per theme, built once.
   const panels = {};
   for (const [name, T] of Object.entries(THEMES)) {
     const panel = el('div', `position:absolute;z-index:41;overflow:auto;display:none;${T.panel}`);
-    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', `${SCENE.name} scene settings`); panel.id = 'kaffeehaus-' + name; panel.dataset.kaffeehausUi = 'panel-' + name;
+    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', `${SCENE.name} scene settings`); panel.id = 'scenes-' + name; panel.dataset.scenesUi = 'panel-' + name;
     const top = el('div', `display:flex;align-items:baseline;gap:8px;${T.german ? 'border-bottom:3px double #8a6a45;padding-bottom:8px' : ''}`);
     const close = el('button', `margin-left:auto;background:none;border:0;font-size:20px;line-height:1;color:${T.muted};cursor:pointer`, '×');
     close.type = 'button'; close.setAttribute('aria-label', 'Close');

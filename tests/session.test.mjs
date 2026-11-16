@@ -81,7 +81,7 @@ test('two chats on screen stay native, and the refusal is announced', () => {
   });
 });
 
-test('the palette opens the chat on screen instead of turning off a hidden café', () => {
+test('the palette opens the chat on screen instead of turning off a hidden scene', () => {
   const first = shown(), next = shown();
   const mounted = surface => ({ enabled: true, surface, update() {}, dispose() {} });
   const session = createSession(fakeCtx(), {}, { mount: mounted });
@@ -90,7 +90,7 @@ test('the palette opens the chat on screen instead of turning off a hidden café
     assert.equal(session.scene.surface, first);
     assert.equal(session.live(), true);
     session.toggle({});
-    assert.equal(session.scene, null, 'toggle off only when the café is on the chat you are reading');
+    assert.equal(session.scene, null, 'toggle off only when the scene is on the chat you are reading');
     session.toggle({ mode: 'window' });
     assert.equal(session.scene.surface, first);
   });

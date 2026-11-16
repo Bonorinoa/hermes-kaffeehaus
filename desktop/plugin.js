@@ -386,7 +386,7 @@ function layout({w,h,mode,width,peek=false}) {
 }
 
 
-// In-scene controls (hybrid): a chalkboard menu board on the café wall when the
+// In-scene controls (hybrid): a menu board on the scene's wall when the
 // room is visible (wide Window Seat), a frosted-glass pill otherwise (Focus,
 // narrow Window Seat). Both open the same settings. Styled with element.style
 // only (no <style> injection); positioned against private host geometry.
@@ -420,20 +420,20 @@ function createOverlay({ root, listen, update, peek = () => {}, reduced = () => 
 
   // Triggers
   const board = el('button', 'position:absolute;z-index:40;width:180px;padding:11px 14px;text-align:left;background:#26282a;border:0;border-radius:0;box-shadow:0 0 0 3px #4a2c20,0 0 0 6px #6b4a2f,0 12px 22px rgba(0,0,0,.45);color:#ecebe4;cursor:pointer;display:none');
-  board.type = 'button'; board.dataset.kaffeehausUi = 'board'; board.setAttribute('aria-controls', 'kaffeehaus-paper'); board.setAttribute('aria-haspopup', 'dialog'); board.setAttribute('aria-expanded', 'false');
+  board.type = 'button'; board.dataset.scenesUi = 'board'; board.setAttribute('aria-controls', 'scenes-paper'); board.setAttribute('aria-haspopup', 'dialog'); board.setAttribute('aria-expanded', 'false');
   const bTitle = el('div', 'font:italic 600 19px/1.1 "Snell Roundhand","Apple Chancery","Bradley Hand",cursive;color:#f4f1e6', C.board);
   const bBlend = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#c9a36a;margin-top:6px');
   const bTime = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#d8d6cc');
   const bHint = el('div', 'font:11.5px/1.3 "Chalkboard",sans-serif;color:#c9c6ba;margin-top:6px', 'click to adjust ›');
   board.append(bTitle, bBlend, bTime, bHint);
   const pill = el('button', 'position:absolute;z-index:40;left:16px;top:14px;height:32px;padding:0 12px;border-radius:999px;font:12.5px/1 -apple-system,sans-serif;color:#eef0f4;background:rgba(28,32,44,.5);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(18px) saturate(1.4);box-shadow:0 6px 18px rgba(0,0,0,.28);cursor:pointer;display:none;white-space:nowrap');
-  pill.type = 'button'; pill.dataset.kaffeehausUi = 'pill'; pill.setAttribute('aria-controls', 'kaffeehaus-glass'); pill.setAttribute('aria-haspopup', 'dialog'); pill.setAttribute('aria-expanded', 'false');
+  pill.type = 'button'; pill.dataset.scenesUi = 'pill'; pill.setAttribute('aria-controls', 'scenes-glass'); pill.setAttribute('aria-haspopup', 'dialog'); pill.setAttribute('aria-expanded', 'false');
 
   // One panel per theme, built once.
   const panels = {};
   for (const [name, T] of Object.entries(THEMES)) {
     const panel = el('div', `position:absolute;z-index:41;overflow:auto;display:none;${T.panel}`);
-    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', `${SCENE.name} scene settings`); panel.id = 'kaffeehaus-' + name; panel.dataset.kaffeehausUi = 'panel-' + name;
+    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', `${SCENE.name} scene settings`); panel.id = 'scenes-' + name; panel.dataset.scenesUi = 'panel-' + name;
     const top = el('div', `display:flex;align-items:baseline;gap:8px;${T.german ? 'border-bottom:3px double #8a6a45;padding-bottom:8px' : ''}`);
     const close = el('button', `margin-left:auto;background:none;border:0;font-size:20px;line-height:1;color:${T.muted};cursor:pointer`, '×');
     close.type = 'button'; close.setAttribute('aria-label', 'Close');
@@ -623,7 +623,7 @@ let sceneSerial = 0;
 // host state read is the public SDK's two booleans host.state.busy / awaitingResponse.
 function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => {}} = {}) {
   const refused = reason => ({enabled:false,reason,dispose() {}});
-  if (!surface?.matches('[data-chat-surface]') || !surface.isConnected || surface.hasAttribute('data-kaffeehaus')) return refused('Unavailable or already owned chat surface');
+  if (!surface?.matches('[data-chat-surface]') || !surface.isConnected || surface.hasAttribute('data-scenes')) return refused('Unavailable or already owned chat surface');
   if (!ctx?.onDispose || !ctx.setInterval || !ctx.addEventListener || typeof ResizeObserver!=='function') return refused('Scoped lifecycle unavailable');
   const one = slot => {const all=surface.querySelectorAll(`[data-slot="${slot}"]`);return all.length===1?all[0]:null;};
   const bounds=one('composer-bounds'), thread=one('thread'), content=one('aui_thread-content'), viewport=one('aui_thread-viewport'), dock=one('composer-dock');
@@ -643,7 +643,7 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
   // user then sees is the theme's chrome token (opaque beside a glass rail), and
   // the scene paints over it anyway, so judge that token instead. A zero-size
   // hidden probe inherits the surface's custom properties.
-  const token=document.createElement('span');token.setAttribute('aria-hidden','true');token.dataset.kaffeehausProbe='';
+  const token=document.createElement('span');token.setAttribute('aria-hidden','true');token.dataset.scenesProbe='';
   token.style.cssText='position:absolute;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;background-color:var(--ui-bg-chrome)';
   const supportedAppearance=()=>{
     if(forced.matches||!sample)return false;
@@ -675,7 +675,7 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
   const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
     left:dock.style.left,right:dock.style.right,transform:dock.style.transform,translate:dock.style.translate,font:content.style.fontFamily,pad:content.style.paddingTop,palette:{}};
   for(const k of KEYS)native.palette[k]=surface.style.getPropertyValue(k);
-  const id=`kh-${++sceneSerial}`;surface.setAttribute('data-kaffeehaus',id);
+  const id=`kh-${++sceneSerial}`;surface.setAttribute('data-scenes',id);
   own(surface,'--composer-width','780px');own(bounds,'background-color','transparent');own(bounds,'isolation','isolate');
   for (const p of ['width','margin-left','margin-right']) own(content,p,content.style.getPropertyValue(p));
   for (const p of ['left','right','transform','translate']) own(dock,p,dock.style.getPropertyValue(p));
@@ -685,10 +685,10 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
   dock.style.translate='none';
   const veil=document.createElement('div');veil.setAttribute('aria-hidden','true');
   veil.style.cssText='position:absolute;inset:0;z-index:-1;pointer-events:none';
-  canvas.setAttribute('aria-hidden','true');canvas.dataset.kaffeehausCanvas='';
+  canvas.setAttribute('aria-hidden','true');canvas.dataset.scenesCanvas='';
   canvas.style.cssText='position:absolute;left:0;bottom:0;pointer-events:none;image-rendering:pixelated;z-index:-2';
   bounds.prepend(canvas,veil);surface.append(token); // keep the appearance probe mounted: no per-frame DOM churn
-  const back=document.createElement('button');back.type='button';back.textContent='Back to chat';back.dataset.kaffeehausBack='';
+  const back=document.createElement('button');back.type='button';back.textContent='Back to chat';back.dataset.scenesBack='';
   back.style.cssText='position:absolute;top:12px;right:12px;z-index:50;padding:10px 16px;color:var(--ui-text-primary);background:var(--ui-panel-background,var(--ui-chat-surface-background));border:2px solid var(--ui-stroke-secondary);border-radius:6px';
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   // In-scene controls (menu board / glass pill). Errors from bad patches are ignored, never thrown into the app.
@@ -751,8 +751,8 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
   };
   const draw=state=>{
     if(disposed||tearingDown)return;
-    // Inactive tabs stay mounted. A café on one of them is no longer the chat on screen.
-    if(controller&&surface.closest('[data-pane-hidden]')){dispose();onState({disabled:true,reason:'Off: that chat is no longer on screen. Open the café again on the one you are reading.'});return}
+    // Inactive tabs stay mounted. A scene on one of them is no longer the chat on screen.
+    if(controller&&surface.closest('[data-pane-hidden]')){dispose();onState({disabled:true,reason:'Off: that chat is no longer on screen. Open it again on the chat you are reading.'});return}
     if(controller&&(!surface.isConnected||one('aui_thread-content')!==content||one('composer-dock')!==dock||surface.querySelector('[data-popped-out]')||!supportedAppearance())){dispose();onState({disabled:true,reason:'Off: host hooks or appearance changed; native state restored'});return}
     const r=bounds.getBoundingClientRect();
     if(!r.width||!r.height)return;
@@ -811,7 +811,7 @@ function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => 
     disposed=true;
     controller?.dispose();loop?.dispose();loop=null;for(const fn of off.reverse())fn();
     tween=null;for(const n of ghosts)n.remove();ghosts.clear();
-    overlay.dispose();canvas.remove();veil.remove();token.remove();surface.removeAttribute('data-kaffeehaus');for(const fn of restores.reverse())fn();
+    overlay.dispose();canvas.remove();veil.remove();token.remove();surface.removeAttribute('data-scenes');for(const fn of restores.reverse())fn();
     onState({disabled:true,reason:'Off. Prior settings restored.'});
   };
   try {
@@ -850,23 +850,23 @@ function chatsOnScreen() {
 }
 
 const PLAIN = {
-  'Unavailable or already owned chat surface': 'This chat is not ready for the café.',
-  'Scoped lifecycle unavailable': 'The app did not give the café a place to live.',
+  'Unavailable or already owned chat surface': 'This chat is not ready for a scene.',
+  'Scoped lifecycle unavailable': 'The app did not give the scene a place to live.',
   'Expected private chat hooks missing (floating/HUD not supported)': 'This layout is not supported. Pop-out and HUD stay as they are.',
   'Unsupported appearance / forced colors; native chat preserved': 'This theme is too light, or the colors could not be read. Dark themes only.',
-  'Canvas unavailable': 'This window cannot draw the café.',
+  'Canvas unavailable': 'This window cannot draw the scene.',
 };
 
 function plain(reason) {
-  if (PLAIN[reason]) return 'The café did not open. ' + PLAIN[reason];
-  if (typeof reason === 'string' && reason.startsWith('Mount failed')) return 'The café did not open. Something in this chat blocked it.';
-  return 'The café did not open. ' + reason;
+  if (PLAIN[reason]) return `${SCENE.name} did not open. ` + PLAIN[reason];
+  if (typeof reason === 'string' && reason.startsWith('Mount failed')) return `${SCENE.name} did not open. Something in this chat blocked it.`;
+  return `${SCENE.name} did not open. ` + reason;
 }
 
 function createSession(ctx, sdk, { mount = mountScene } = {}) {
   let scene = null, mountedEl = null, last = { disabled: true, reason: 'Off. Click Apply to start. Experimental: relies on Hermes internals that may change.' };
   const subs = new Set();
-  // Settings are remembered in memory only (no storage), so Off then Apply returns to the same café.
+  // Settings are remembered in memory only (no storage), so Off then Apply returns to the same scene.
   let prefs = { mode: 'window', width: 780, looks: { focus: { ...DEFAULT_LOOKS.focus }, window: { ...DEFAULT_LOOKS.window } }, motionRequested: true };
   const report = s => {
     last = s;
@@ -879,7 +879,7 @@ function createSession(ctx, sdk, { mount = mountScene } = {}) {
   };
   const session = {
     get scene() { return scene; },
-    // True only when the café is on the chat the user is reading. A café left on a hidden tab is not.
+    // True only when the scene is on the chat the user is reading. A scene left on a hidden tab is not.
     live() {
       const surfaces = chatsOnScreen();
       return !!(scene?.enabled && surfaces.length === 1 && mountedEl === surfaces[0]);
@@ -892,8 +892,8 @@ function createSession(ctx, sdk, { mount = mountScene } = {}) {
       const surfaces = chatsOnScreen();
       if (surfaces.length !== 1) {
         announce(surfaces.length === 0
-          ? 'The café did not open. No chat is on screen in this window.'
-          : 'The café did not open. More than one chat is open. Close the extra pane and try again.');
+          ? `${SCENE.name} did not open. No chat is on screen in this window.`
+          : `${SCENE.name} did not open. More than one chat is open. Close the extra pane and try again.`);
         return;
       }
       scene = mount(surfaces[0], ctx, sdk, { onState: report });
@@ -901,7 +901,7 @@ function createSession(ctx, sdk, { mount = mountScene } = {}) {
       else { const reason = plain(scene.reason); scene = null; announce(reason); }
     },
     off() { scene?.dispose(); scene = null; mountedEl = null; report({ disabled: true, reason: 'Off. Prior settings restored.' }); },
-    // Palette row: turn off only the café you can see. Otherwise open the one on screen.
+    // Palette row: turn off only the scene you can see. Otherwise open the one on screen.
     toggle(prefs) { if (session.live()) session.off(); else session.apply(prefs); },
     update(patch) { if (scene?.enabled) scene.update(patch); },
     dispose() { scene?.dispose(); scene = null; mountedEl = null; subs.clear(); },
@@ -911,27 +911,28 @@ function createSession(ctx, sdk, { mount = mountScene } = {}) {
 }
 
 // The sidebar tab is only the launcher: Hermes starts plugins like this from a tab, so the
-// scene has to be switched on here. Every setting lives on the café's own card (the menu
+// scene has to be switched on here. Every setting lives on the scene's own card (the menu
 // board in Window Seat, the ☕ pill in Focus and Classic), so the tab can be closed.
 function mountControls(container, ctx, session) {
   let disposed = false;
   const off = [];
   const el = (tag, css, text) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text != null) n.textContent = text; return n; };
   const form = el('div', 'display:flex;flex-direction:column;gap:12px;color:var(--ui-text-primary);font:14px/1.5 system-ui');
-  const title = el('strong', 'font:600 16px/1.2 "Iowan Old Style",Palatino,Georgia,serif', '☕ Kaffeehaus');
+  const title = el('strong', 'font:600 16px/1.2 "Iowan Old Style",Palatino,Georgia,serif', 'Scenes');
+  const sub = el('span', 'margin-top:-8px;color:var(--ui-text-tertiary);font-size:13px', `${SCENE.icon} ${SCENE.name} · ${SCENE.tagline}`);
   const btnCss = 'color:inherit;background:var(--ui-panel-background,var(--ui-chat-surface-background));border:1px solid var(--ui-stroke-secondary);padding:8px 10px;border-radius:6px;font:inherit;cursor:pointer;text-align:left';
-  const apply = el('button', btnCss, 'Open the café'); apply.type = 'button'; apply.dataset.kh = 'apply';
+  const apply = el('button', btnCss, SCENE.open); apply.type = 'button'; apply.dataset.kh = 'apply';
   const stop = el('button', btnCss, 'Off · restore Hermes'); stop.type = 'button'; stop.dataset.kh = 'off';
   const status = el('p', 'margin:0;color:var(--ui-text-secondary)'); status.setAttribute('role', 'status'); status.dataset.kh = 'status';
-  const how = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:13px', 'Change the seat, the hour, the blend and the look from the café itself: the chalkboard on the wall in Window Seat, or the ☕ pill in Focus and Classic. You can close this tab; the café keeps running.');
+  const how = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:13px', 'Change the seat, the hour, the blend and the look from inside the scene: the board on the wall in Window Seat, or the pill in Focus and Classic. You can close this tab; the scene keeps running.');
   const note = el('p', 'margin:0;color:var(--ui-text-tertiary);font-size:12px', 'Runs entirely on your Mac: no network, no storage, never reads your chats. The note-taker only knows whether Hermes is working. Experimental: relies on Hermes internals that may change. Inspired by Borealis.');
-  form.append(title, apply, stop, status, how, note);
+  form.append(title, sub, apply, stop, status, how, note);
   container.append(form);
   const SEATS = { window: 'Window Seat', focus: 'Focus', classic: 'Classic' };
   const say = text => { if (status.textContent !== text) status.textContent = text; };
   const report = s => {
     if (disposed) return;
-    if (s.disabled) { say(s.reason); apply.textContent = 'Open the café'; stop.disabled = true; return; }
+    if (s.disabled) { say(s.reason); apply.textContent = SCENE.open; stop.disabled = true; return; }
     apply.textContent = 'Reapply to this chat'; stop.disabled = false;
     // Describes state, not a ticking clock, so screen readers are not re-announced every minute.
     say(`On · ${SEATS[s.mode]} · ${s.clock.mode === 'auto' ? 'following the clock' : 'hour set by hand'} · motion ${s.motion ? 'on' : 'off'}${s.reduced ? ' (macOS Reduce motion)' : ''}${s.peek ? ' · peeking at the room' : ''}`);
@@ -945,16 +946,16 @@ function mountControls(container, ctx, session) {
 }
 
 
-const plugin={id:'hermes-kaffeehaus',name:'Kaffeehaus',defaultEnabled:false,
- description:'A time-aware pixel café behind your Hermes chat. Local only; experimental.',
+const plugin={id:'scenes',name:'Scenes',defaultEnabled:false,
+ description:'Living scenes behind your Hermes chat. Skins change the colours; scenes change the place. Local only; experimental.',
  register(ctx){
   const session=createSession(ctx,sdk); // outlives the tab: hiding the sidebar keeps the scene
   function Controls(){const ref=useRef(null);useEffect(()=>{const c=mountControls(ref.current,ctx,session);return ()=>c.dispose()},[]);return createElement('div',{ref,style:{padding:12,overflow:'auto',height:'100%'}})}
-  ctx.register({id:'controls',area:'panes',title:'Kaffeehaus',data:{placement:'right',width:'320px'},render:()=>createElement(Controls)});
-  // ⌘K rows, so the café can be opened or closed (and the tab brought back) after the tab is closed.
-  ctx.register({id:'toggle',area:'palette',data:{label:'Kaffeehaus café',keywords:['kaffeehaus','cafe','coffee','scene','ambient'],
+  ctx.register({id:'controls',area:'panes',title:'Scenes',data:{placement:'right',width:'320px'},render:()=>createElement(Controls)});
+  // ⌘K rows, so the scene can be opened or closed (and the tab brought back) after the tab is closed.
+  ctx.register({id:'toggle',area:'palette',data:{label:`Scenes: ${SCENE.name}`,keywords:['scenes','scene',SCENE.id,'cafe','coffee','ambient','workspace'],
    detail:()=>session.live()?'on':'off',detailVariant:'state',run:()=>session.toggle(session.prefs())}});
-  ctx.register({id:'tab',area:'palette',data:{label:'Kaffeehaus: show the tab',keywords:['kaffeehaus','cafe','pane'],
-   run:()=>{try{sdk.host?.revealPane?.('hermes-kaffeehaus:controls')}catch{}}}});
+  ctx.register({id:'tab',area:'palette',data:{label:'Scenes: show the tab',keywords:['scenes','scene','pane'],
+   run:()=>{try{sdk.host?.revealPane?.('scenes:controls')}catch{}}}});
  }};
 export default plugin;

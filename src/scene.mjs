@@ -12,7 +12,7 @@ let sceneSerial = 0;
 // host state read is the public SDK's two booleans host.state.busy / awaitingResponse.
 export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState = () => {}} = {}) {
   const refused = reason => ({enabled:false,reason,dispose() {}});
-  if (!surface?.matches('[data-chat-surface]') || !surface.isConnected || surface.hasAttribute('data-kaffeehaus')) return refused('Unavailable or already owned chat surface');
+  if (!surface?.matches('[data-chat-surface]') || !surface.isConnected || surface.hasAttribute('data-scenes')) return refused('Unavailable or already owned chat surface');
   if (!ctx?.onDispose || !ctx.setInterval || !ctx.addEventListener || typeof ResizeObserver!=='function') return refused('Scoped lifecycle unavailable');
   const one = slot => {const all=surface.querySelectorAll(`[data-slot="${slot}"]`);return all.length===1?all[0]:null;};
   const bounds=one('composer-bounds'), thread=one('thread'), content=one('aui_thread-content'), viewport=one('aui_thread-viewport'), dock=one('composer-dock');
@@ -32,7 +32,7 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
   // user then sees is the theme's chrome token (opaque beside a glass rail), and
   // the scene paints over it anyway, so judge that token instead. A zero-size
   // hidden probe inherits the surface's custom properties.
-  const token=document.createElement('span');token.setAttribute('aria-hidden','true');token.dataset.kaffeehausProbe='';
+  const token=document.createElement('span');token.setAttribute('aria-hidden','true');token.dataset.scenesProbe='';
   token.style.cssText='position:absolute;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;background-color:var(--ui-bg-chrome)';
   const supportedAppearance=()=>{
     if(forced.matches||!sample)return false;
@@ -64,7 +64,7 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
   const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
     left:dock.style.left,right:dock.style.right,transform:dock.style.transform,translate:dock.style.translate,font:content.style.fontFamily,pad:content.style.paddingTop,palette:{}};
   for(const k of KEYS)native.palette[k]=surface.style.getPropertyValue(k);
-  const id=`kh-${++sceneSerial}`;surface.setAttribute('data-kaffeehaus',id);
+  const id=`kh-${++sceneSerial}`;surface.setAttribute('data-scenes',id);
   own(surface,'--composer-width','780px');own(bounds,'background-color','transparent');own(bounds,'isolation','isolate');
   for (const p of ['width','margin-left','margin-right']) own(content,p,content.style.getPropertyValue(p));
   for (const p of ['left','right','transform','translate']) own(dock,p,dock.style.getPropertyValue(p));
@@ -74,10 +74,10 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
   dock.style.translate='none';
   const veil=document.createElement('div');veil.setAttribute('aria-hidden','true');
   veil.style.cssText='position:absolute;inset:0;z-index:-1;pointer-events:none';
-  canvas.setAttribute('aria-hidden','true');canvas.dataset.kaffeehausCanvas='';
+  canvas.setAttribute('aria-hidden','true');canvas.dataset.scenesCanvas='';
   canvas.style.cssText='position:absolute;left:0;bottom:0;pointer-events:none;image-rendering:pixelated;z-index:-2';
   bounds.prepend(canvas,veil);surface.append(token); // keep the appearance probe mounted: no per-frame DOM churn
-  const back=document.createElement('button');back.type='button';back.textContent='Back to chat';back.dataset.kaffeehausBack='';
+  const back=document.createElement('button');back.type='button';back.textContent='Back to chat';back.dataset.scenesBack='';
   back.style.cssText='position:absolute;top:12px;right:12px;z-index:50;padding:10px 16px;color:var(--ui-text-primary);background:var(--ui-panel-background,var(--ui-chat-surface-background));border:2px solid var(--ui-stroke-secondary);border-radius:6px';
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   // In-scene controls (menu board / glass pill). Errors from bad patches are ignored, never thrown into the app.
@@ -140,8 +140,8 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
   };
   const draw=state=>{
     if(disposed||tearingDown)return;
-    // Inactive tabs stay mounted. A café on one of them is no longer the chat on screen.
-    if(controller&&surface.closest('[data-pane-hidden]')){dispose();onState({disabled:true,reason:'Off: that chat is no longer on screen. Open the café again on the one you are reading.'});return}
+    // Inactive tabs stay mounted. A scene on one of them is no longer the chat on screen.
+    if(controller&&surface.closest('[data-pane-hidden]')){dispose();onState({disabled:true,reason:'Off: that chat is no longer on screen. Open it again on the chat you are reading.'});return}
     if(controller&&(!surface.isConnected||one('aui_thread-content')!==content||one('composer-dock')!==dock||surface.querySelector('[data-popped-out]')||!supportedAppearance())){dispose();onState({disabled:true,reason:'Off: host hooks or appearance changed; native state restored'});return}
     const r=bounds.getBoundingClientRect();
     if(!r.width||!r.height)return;
@@ -200,7 +200,7 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     disposed=true;
     controller?.dispose();loop?.dispose();loop=null;for(const fn of off.reverse())fn();
     tween=null;for(const n of ghosts)n.remove();ghosts.clear();
-    overlay.dispose();canvas.remove();veil.remove();token.remove();surface.removeAttribute('data-kaffeehaus');for(const fn of restores.reverse())fn();
+    overlay.dispose();canvas.remove();veil.remove();token.remove();surface.removeAttribute('data-scenes');for(const fn of restores.reverse())fn();
     onState({disabled:true,reason:'Off. Prior settings restored.'});
   };
   try {
