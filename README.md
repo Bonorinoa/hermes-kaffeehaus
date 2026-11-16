@@ -52,8 +52,6 @@ hermes plugins install Bonorinoa/scenes
 
 If you'd rather install by hand, copy `desktop/plugin.js` into a new folder `~/.hermes/desktop-plugins/scenes/` (that file is all Desktop needs). To update: `hermes plugins update scenes`, then reload Hermes.
 
-**Coming from Kaffeehaus 0.2?** The plugin was renamed. Run `hermes plugins remove hermes-kaffeehaus`, then install `Bonorinoa/scenes` as above.
-
 The plugin installs **switched off**. To start it:
 
 1. In Hermes Desktop, open **Capabilities → Plugins** and turn **Scenes** on.
