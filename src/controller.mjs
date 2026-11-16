@@ -1,3 +1,4 @@
+import { SCENE } from './scenes.mjs';
 import { sampleSceneTime } from './scene-time.mjs';
 
 // Per-mode look: scene blur (px), scene brightness (%), text-panel veil opacity
@@ -5,15 +6,8 @@ import { sampleSceneTime } from './scene-time.mjs';
 export const DEFAULT_LOOKS = Object.freeze({
   focus: Object.freeze({ blur: 11, brightness: 55, veil: 86, glass: 14 }),
   window: Object.freeze({ blur: 0, brightness: 100, veil: 96, glass: 0 }) });
-// House blends: named looks picked by hand (manual, not adaptive). Window Seat keeps the room sharp.
-export const BLENDS = Object.freeze([
-  { name: 'Kleiner Schwarzer', note: 'dark, reading first',
-    focus: { blur: 12, brightness: 45, veil: 90, glass: 16 }, window: { blur: 0, brightness: 80, veil: 97, glass: 0 } },
-  { name: 'Melange', note: 'balanced',
-    focus: { blur: 5, brightness: 75, veil: 72, glass: 10 }, window: { blur: 0, brightness: 100, veil: 88, glass: 12 } },
-  { name: 'Einspänner', note: 'the room comes through',
-    focus: { blur: 2, brightness: 95, veil: 55, glass: 6 }, window: { blur: 0, brightness: 100, veil: 70, glass: 18 } }]);
-// classic: the Kaffeehaus palette and type over Hermes's own layout, no room.
+// House blends belong to the scene. classic: the scene's palette and type over Hermes's own layout, no room.
+export const BLENDS = SCENE.blends;
 export const MODES = Object.freeze(['window', 'focus', 'classic']);
 export const LOOK_RANGES = Object.freeze({ blur: [0, 24], brightness: [20, 100], veil: [0, 100], glass: [0, 30] });
 

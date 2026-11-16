@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-const K = createRequire(import.meta.url)('../art/kaffeehaus.js');
+const K = createRequire(import.meta.url)('../scenes/kaffeehaus/art.js');
 
 const W = 180, O = { wx: 48, tx: 112 };
 function rec() {

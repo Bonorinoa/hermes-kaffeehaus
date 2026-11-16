@@ -6,14 +6,20 @@ import { bundle } from '../build.mjs';
 
 const source = fs.readFileSync(new URL('../desktop/plugin.js', import.meta.url), 'utf8');
 
-test('desktop/plugin.js is up to date with src/ and art/ (run `node build.mjs`)', () => {
+test('desktop/plugin.js is up to date with src/ and scenes/ (run `node build.mjs`)', () => {
   assert.equal(source, bundle());
 });
 
 test('every src/ module is in the bundle (a missing one only fails inside Hermes)', async () => {
   const { SOURCES } = await import('../build.mjs');
   const all = fs.readdirSync(new URL('../src/', import.meta.url)).filter(f => f.endsWith('.mjs')).map(f => 'src/' + f).sort();
-  assert.deepEqual([...SOURCES].sort(), all);
+  assert.deepEqual(SOURCES.filter(p => p.startsWith('src/')).sort(), all);
+});
+
+test('every shipped scene folder is in the bundle (art and manifest)', async () => {
+  const { SOURCES, SCENE_IDS } = await import('../build.mjs');
+  assert.ok(SCENE_IDS.length >= 1);
+  for (const id of SCENE_IDS) { assert.ok(SOURCES.includes(`scenes/${id}/scene.mjs`), id); assert.ok(source.includes(`${JSON.stringify(id)}:(()=>{`), id); }
 });
 
 test('plugin is opt-in, imports only the SDK and React, and has no network or storage calls', () => {

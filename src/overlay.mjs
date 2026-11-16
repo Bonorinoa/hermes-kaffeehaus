@@ -1,20 +1,22 @@
 import { DEFAULT_LOOKS, LOOK_RANGES, BLENDS } from './controller.mjs';
+import { SCENE } from './scenes.mjs';
 
 // In-scene controls (hybrid): a chalkboard menu board on the café wall when the
 // room is visible (wide Window Seat), a frosted-glass pill otherwise (Focus,
 // narrow Window Seat). Both open the same settings. Styled with element.style
 // only (no <style> injection); positioned against private host geometry.
-const LOOK_ROWS = [['blur', 'Unschärfe', 'Scene blur', 'px'], ['brightness', 'Helligkeit', 'Scene brightness', '%'],
-  ['veil', 'Schleier', 'Text panel', '%'], ['glass', 'Glas', 'Glass', 'px']];
+// [key, the scene's own word, plain English, unit]. The scene's card voice comes from SCENE.card.
+const C = SCENE.card;
+const LOOK_ROWS = [['blur', C.looks.blur, 'Scene blur', 'px'], ['brightness', C.looks.brightness, 'Scene brightness', '%'],
+  ['veil', C.looks.veil, 'Text panel', '%'], ['glass', C.looks.glass, 'Glass', 'px']];
 const THEMES = {
   paper: { panel: 'background:#f2e9d6;color:#2a211b;border-radius:4px;padding:16px 18px 14px;box-shadow:0 18px 40px rgba(0,0,0,.5);font:14px/1.45 "Iowan Old Style",Palatino,Georgia,serif;width:330px',
-    title: 'Die Karte', sub: 'café settings', head: 'font:600 11px/1 -apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8a6a45;margin:14px 0 7px',
+    title: C.title, sub: C.sub, head: 'font:600 11px/1 -apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8a6a45;margin:14px 0 7px',
     btn: 'flex:1;padding:6px 8px;border:1px solid #b59a73;background:transparent;border-radius:3px;color:#2a211b;font:inherit;cursor:pointer;outline-color:#6b4a2f;outline-offset:1px',
     on: 'background:#2a211b;color:#f2e9d6;border-color:#2a211b', muted: '#7a6650', accent: '#6b4a2f',
-    sections: [['Platz', 'where you sit'], ['Uhrzeit', 'light in the room'], ['Hausmischungen', 'house blends'], ['À la carte', 'for this seat'], ['Im Raum', 'the room']],
-    seats: [['window', 'Fensterplatz'], ['focus', 'Fokus'], ['classic', 'Klassisch']], follow: 'Jetzt', reset: 'Zurücksetzen · reset this seat', width: ['Lesebreite', 'reading width'], motion: ['Bewegung', 'Stillleben'], peek: 'Nur der Raum · peek', german: true },
+    sections: C.sections, seats: Object.entries(C.seats), follow: C.follow, reset: C.reset, width: C.width, motion: C.motion, peek: C.peek, german: !!C.glosses },
   glass: { panel: 'background:rgba(22,26,36,.94);color:#eef0f4;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px 12px;box-shadow:0 20px 44px rgba(0,0,0,.45);font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;width:340px;backdrop-filter:blur(26px) saturate(1.5)',
-    title: 'Café', sub: 'scene settings', head: 'font:600 10.5px/1 -apple-system,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,240,244,.68);margin:12px 0 7px',
+    title: SCENE.name, sub: 'scene settings', head: 'font:600 10.5px/1 -apple-system,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,240,244,.68);margin:12px 0 7px',
     btn: 'flex:1;padding:6px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);border-radius:8px;color:#eef0f4;font:inherit;cursor:pointer;outline-color:#c9a36a;outline-offset:1px',
     on: 'background:rgba(201,163,106,.28);border-color:rgba(201,163,106,.7)', muted: 'rgba(238,240,244,.6)', accent: '#c9a36a',
     sections: [['Seat', ''], ['Light', ''], ['House blends', ''], ['Look · this seat', ''], ['Room', '']],
@@ -34,7 +36,7 @@ export function createOverlay({ root, listen, update, peek = () => {}, reduced =
   // Triggers
   const board = el('button', 'position:absolute;z-index:40;width:180px;padding:11px 14px;text-align:left;background:#26282a;border:0;border-radius:0;box-shadow:0 0 0 3px #4a2c20,0 0 0 6px #6b4a2f,0 12px 22px rgba(0,0,0,.45);color:#ecebe4;cursor:pointer;display:none');
   board.type = 'button'; board.dataset.kaffeehausUi = 'board'; board.setAttribute('aria-controls', 'kaffeehaus-paper'); board.setAttribute('aria-haspopup', 'dialog'); board.setAttribute('aria-expanded', 'false');
-  const bTitle = el('div', 'font:italic 600 19px/1.1 "Snell Roundhand","Apple Chancery","Bradley Hand",cursive;color:#f4f1e6', 'Die Karte');
+  const bTitle = el('div', 'font:italic 600 19px/1.1 "Snell Roundhand","Apple Chancery","Bradley Hand",cursive;color:#f4f1e6', C.board);
   const bBlend = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#c9a36a;margin-top:6px');
   const bTime = el('div', 'font:12.5px/1.4 "Chalkboard","Bradley Hand",sans-serif;color:#d8d6cc');
   const bHint = el('div', 'font:11.5px/1.3 "Chalkboard",sans-serif;color:#c9c6ba;margin-top:6px', 'click to adjust ›');
@@ -46,7 +48,7 @@ export function createOverlay({ root, listen, update, peek = () => {}, reduced =
   const panels = {};
   for (const [name, T] of Object.entries(THEMES)) {
     const panel = el('div', `position:absolute;z-index:41;overflow:auto;display:none;${T.panel}`);
-    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Café scene settings'); panel.id = 'kaffeehaus-' + name; panel.dataset.kaffeehausUi = 'panel-' + name;
+    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', `${SCENE.name} scene settings`); panel.id = 'kaffeehaus-' + name; panel.dataset.kaffeehausUi = 'panel-' + name;
     const top = el('div', `display:flex;align-items:baseline;gap:8px;${T.german ? 'border-bottom:3px double #8a6a45;padding-bottom:8px' : ''}`);
     const close = el('button', `margin-left:auto;background:none;border:0;font-size:20px;line-height:1;color:${T.muted};cursor:pointer`, '×');
     close.type = 'button'; close.setAttribute('aria-label', 'Close');
@@ -59,7 +61,7 @@ export function createOverlay({ root, listen, update, peek = () => {}, reduced =
 
     head(0); const seatRow = row();
     const seats = T.seats.map(([mode, text]) => { const b = button(seatRow, text, () => update({ mode })); b.dataset.mode = mode; return b; });
-    const classicNote = el('p', `margin:10px 0 2px;font-style:italic;color:${T.muted}`, 'Classic is the Kaffeehaus palette and type without the room. Pick a seat above to step into the café.');
+    const classicNote = el('p', `margin:10px 0 2px;font-style:italic;color:${T.muted}`, C.classicNote);
     panel.append(classicNote); const roomFrom = panel.childElementCount;
     head(1); const hourRow = row(); const hour = range([0, 23.75], 0.25, 'Hour'); hour.style.flex = '1';
     const hourOut = el('span', `font-variant-numeric:tabular-nums;color:${T.muted}`);
@@ -163,9 +165,9 @@ export function createOverlay({ root, listen, update, peek = () => {}, reduced =
     if (bBlend.textContent !== name) bBlend.textContent = name;
     if (bTime.textContent !== time) bTime.textContent = time;
     const classic = state.mode === 'classic';
-    const pillText = classic ? '☕ Kaffeehaus Classic ▾' : `☕ ${name} · ${fmtHour(h)}${live ? '' : ' · by hand'} · ${state.mode === 'window' ? 'Window Seat' : 'Focus'} ▾`;
+    const pillText = classic ? `${SCENE.icon} ${SCENE.name} Classic ▾` : `${SCENE.icon} ${name} · ${fmtHour(h)}${live ? '' : ' · by hand'} · ${state.mode === 'window' ? 'Window Seat' : 'Focus'} ▾`;
     if (pill.textContent !== pillText) pill.textContent = pillText;
-    board.setAttribute('aria-label', `Café settings: ${name}, ${time}`);
+    board.setAttribute('aria-label', `${SCENE.name} settings: ${name}, ${time}`);
     for (const p of Object.values(panels)) {
       for (const b of p.seats) { const on = b.dataset.mode === state.mode; b.setAttribute('aria-pressed', String(on)); b.style.cssText = p.T.btn + (on ? ';' + p.T.on : ''); }
       for (const b of p.blends) { const on = b.dataset.blend === name; b.setAttribute('aria-pressed', String(on)); b.style.cssText = p.T.btn + ';flex:0 0 auto' + (on ? ';' + p.T.on : ''); }

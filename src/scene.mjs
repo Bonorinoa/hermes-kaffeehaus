@@ -2,6 +2,7 @@ import { createController } from './controller.mjs';
 import { layout } from './layout.mjs';
 import { createOverlay } from './overlay.mjs';
 import { createCharacter } from './character.mjs';
+import { SCENE, PALETTE_KEYS } from './scenes.mjs';
 
 const DUR = 360; // ms for seat changes; reduced motion snaps
 const ease = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
@@ -57,12 +58,9 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     restores.push(()=>old?node.style.setProperty(name,old,p):node.style.removeProperty(name));
     node.style.setProperty(name,value,priority);
   };
-  // Classic: the house palette (espresso ground, oxblood, sand, cream) and editorial type,
-  // scoped to this chat surface through Hermes's own theme variables. Hermes keeps its layout.
-  const PALETTE={'--ui-text-primary':'#efe6d6','--ui-text-secondary':'#dccbb0','--ui-text-tertiary':'#c8b394','--ui-text-quaternary':'#a8967c',
-    '--ui-accent':'#b4534a','--muted-foreground':'#cbb38c','--ui-stroke-secondary':'rgba(201,163,106,.30)','--ui-stroke-tertiary':'rgba(201,163,106,.18)',
-    '--ui-chat-bubble-background':'#2d221e','--ui-inline-code-background':'rgba(201,163,106,.13)','--ui-inline-code-foreground':'#e6c99a'};
-  const KEYS=Object.keys(PALETTE);
+  // Classic: the active scene's palette, scoped to this chat surface through Hermes's own theme variables.
+  const PALETTE=SCENE.palette;
+  const KEYS=PALETTE_KEYS;
   const native={composer:surface.style.getPropertyValue('--composer-width'),width:content.style.width,ml:content.style.marginLeft,mr:content.style.marginRight,
     left:dock.style.left,right:dock.style.right,transform:dock.style.transform,translate:dock.style.translate,font:content.style.fontFamily,pad:content.style.paddingTop,palette:{}};
   for(const k of KEYS)native.palette[k]=surface.style.getPropertyValue(k);
@@ -153,7 +151,7 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     const key=classic?'classic':`${mode}|${peek}|${g.wide}`, changed=shown!==null&&shown!==key;
     if(changed)fade();
     shown=key;
-    for(const [k,v] of Object.entries(PALETTE))surface.style.setProperty(k,classic?v:native.palette[k]);
+    for(const k of KEYS)surface.style.setProperty(k,classic&&k in PALETTE?PALETTE[k]:native.palette[k]);
     content.style.fontFamily=classic?'"Iowan Old Style",Palatino,"Times New Roman",Georgia,serif':native.font;
     if(classic){
       // Hermes's own geometry (plus room for the pill); the ground is the house palette instead of the room.
@@ -188,7 +186,7 @@ export function mountScene(surface, ctx, sdk, {now = () => new Date(), onState =
     const H=Math.max(144,Math.ceil(r.height/g.scale)), band=H-144;
     canvas.width=g.W;canvas.height=H;canvas.style.width=`${g.W*g.scale}px`;canvas.style.height=`${H*g.scale}px`;
     paint.save();paint.translate(0,band);
-    K.draw(paint,g.W,state.clock.hour,frame,{wx:g.wx,tx:g.tx,state:state.motion?act.state:'still',since:act.since});
+    ART[SCENE.id].draw(paint,g.W,state.clock.hour,frame,{wx:g.wx,tx:g.tx,state:state.motion?act.state:'still',since:act.since});
     paint.restore();
     if(band>0){
       paint.drawImage(canvas,0,band,g.W,1,0,0,g.W,band);
