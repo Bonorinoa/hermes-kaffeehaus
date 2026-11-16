@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Scene preview (NOT Hermes)</title>
+<style>body{margin:0;background:#111;color:#ccc;font:12px -apple-system,sans-serif}div{display:inline-block;margin:6px}canvas{image-rendering:pixelated;display:block}</style></head>
+<body><script>
+// Draws one scene at six hours, 3x, so you can check the art without Hermes.
+// open: tools/preview/scene.html?scene=_template   (or use tools/preview/shoot.sh <scene>)
+var module = { exports: {} };
+const id = new URLSearchParams(location.search).get('scene') || '_template';
+const s = document.createElement('script'); s.src = `../../scenes/${id}/art.js`;
+s.onload = () => {
+  const art = module.exports, W = 220, Z = 3;
+  for (const hour of [1, 6.5, 10, 14, 19, 22]) {
+    const box = document.createElement('div'), c = document.createElement('canvas'); c.width = W; c.height = 144;
+    c.style.width = W * Z + 'px'; c.style.height = 144 * Z + 'px';
+    art.draw(c.getContext('2d'), W, hour, 12, { wx: 80, tx: 160, state: 'still', since: 0 });
+    box.append(c, `${id} · ${String(Math.floor(hour)).padStart(2, '0')}:${hour % 1 ? '30' : '00'}`); document.body.append(box);
+  }
+};
+document.head.append(s);
+</script></body></html>
