@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-11-15)
 - **Kaffeehaus becomes Scenes.** The plugin is now a home for living scenes behind your Hermes chat; Kaffeehaus is the first. Plugin id `scenes` (remove `hermes-kaffeehaus` first), ⌘K rows *Scenes: Kaffeehaus* and *Scenes: show the tab*.
 - **Make your own scene:** a scene is `scenes/<id>/art.js` + `scene.mjs` (name, menu voice, house blends, Classic palette). `SCENES.md` has the contract, a template (a city window), a preview tool and a prompt for your agent. A contract test checks every scene.
 - **The café opens on the chat you are reading.** Hermes keeps recent chats loaded in the background; they no longer count as a split view. If a scene cannot open, a short note says why, even with the tab closed.
