@@ -94,13 +94,23 @@ Switching seats eases the chat into place and fades the room across. With macOS 
 
 | What you see | Why, and what to do |
 |---|---|
-| The scene switched itself off | You moved to another tab or chat, changed to a light theme, or Hermes changed its layout. Open the chat you want and run ⌘K → **Scenes: Kaffeehaus** again. (Following you across tabs is on the list.) |
-| The scene did not open | It needs the chat you are reading, and a dark theme. Other tabs can stay open. If two chats are side by side, close one. A short note says why. |
+| The scene switched itself off | You moved to another tab or chat, changed to a light theme, or Hermes changed its layout. Open the chat you want and run ⌘K → **Scenes: Kaffeehaus** again. See [Known limitations](#known-limitations-and-whats-next). |
+| The scene did not open | It needs the chat you are reading, and a dark theme. Other tabs can stay open. If two chats are side by side, close one. A short note says why. See [Known limitations](#known-limitations-and-whats-next). |
 | The tab is gone | You closed it, which is fine. ⌘K → **Scenes: show the tab** brings it back. |
 | Nothing moves | macOS **Reduce motion** is on (System Settings → Accessibility → Display), or Motion is off on the card. |
 | The menu covers my text | That's on purpose while it's open, so the window stays visible. Esc closes it. |
 
 Found a bug or have an idea? [Open an issue](https://github.com/Bonorinoa/scenes/issues).
+
+## Known limitations, and what's next
+
+**Dark themes only (for now).** A scene sits behind your text, and today's veil (the darkened layer that keeps text readable over the picture) only works with dark themes. On a light theme it would turn the page a muddy grey, so Scenes refuses to start instead. *Planned:* a light veil when your Hermes theme is light, an optional light Classic palette for each scene, and a contrast check so text over the picture stays readable. A night café behind a white page would look like a hole in the paper, so under a light theme a scene will probably lean towards its daytime look.
+
+**One chat at a time (no split view).** A scene arranges itself around a single chat. With two chats side by side it leaves both alone, and pop-out and HUD windows too. *Planned:* one scene spanning the whole window, with both chats floating over it as in Focus. Window Seat doesn't fit in half a window, so split view will offer Focus only.
+
+**The scene turns off when you switch tabs.** Hermes keeps recent chats loaded in the background, and a scene belongs to the chat it opened on. *Planned:* the scene follows you to the chat on screen, or pauses and comes back with its tab.
+
+Using a light theme or split view? Tell us in an [issue](https://github.com/Bonorinoa/scenes/issues): it decides which of these comes first.
 
 ## ⚠️ Experimental
 
